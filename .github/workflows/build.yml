@@ -18,7 +18,9 @@ jobs:
         distribution: 'temurin'
 
     - name: Configurar el SDK de Android
-      uses: android-actions/setup-android@v3
+      uses: android-actions/setup-android@v4
+      with:
+        packages: 'platform-tools'
 
     - name: Configurar Gradle
       uses: gradle/actions/setup-gradle@v3
