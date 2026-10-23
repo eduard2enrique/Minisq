@@ -1,0 +1,6 @@
+{
+  "name": "MiniSQL",
+  "description": "Navegador y editor visual de SQLite con motor nativo, consultas avanzadas, diseñador ER y exportación.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
