@@ -17,6 +17,9 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    - name: Configurar el SDK de Android
+      uses: android-actions/setup-android@v3
+
     - name: Configurar Gradle
       uses: gradle/actions/setup-gradle@v3
       with:
