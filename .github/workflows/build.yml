@@ -10,7 +10,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout del código
+      uses: actions/checkout@v4
 
     - name: Configurar Java 21
       uses: actions/setup-java@v4
@@ -19,24 +20,16 @@ jobs:
         distribution: 'temurin'
         cache: 'gradle'
 
-    - name: Configurar el SDK de Android
-      uses: android-actions/setup-android@v3
-
-    - name: Dar permisos a gradlew
+    - name: Permisos de ejecución a gradlew
       run: chmod +x gradlew || true
 
-    # Genera el debug.keystore necesario para firmar la app en depuración
+    # Genera el debug.keystore necesario para firmar el APK
     - name: Generar Keystore de Depuración
       run: |
         keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
 
     - name: Compilar APK con Gradle
-      run: |
-        if [ -f "./gradlew" ]; then
-          ./gradlew assembleDebug --stacktrace
-        else
-          gradle assembleDebug --stacktrace
-        fi
+      run: ./gradlew assembleDebug --no-daemon --stacktrace
 
     - name: Guardar el APK
       uses: actions/upload-artifact@v4
