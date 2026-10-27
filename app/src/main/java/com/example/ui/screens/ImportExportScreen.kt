@@ -23,15 +23,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.FileDownload
-import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.ShoppingCart
-import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.ShoppingCart
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -258,7 +258,7 @@ fun ImportExportScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.TableChart,
+                        imageVector = Icons.Outlined.TableChart,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
@@ -286,7 +286,7 @@ fun ImportExportScreen(
                         onClick = { importSpreadsheetLauncher.launch("*/*") },
                         modifier = Modifier.weight(1.3f).testTag("import_csv_excel_btn")
                     ) {
-                        Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Elegir CSV / Excel")
                     }
@@ -310,7 +310,7 @@ fun ImportExportScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Storage,
+                        imageVector = Icons.Outlined.Storage,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(22.dp)
@@ -338,7 +338,7 @@ fun ImportExportScreen(
                         onClick = { importDbLauncher.launch("*/*") },
                         modifier = Modifier.weight(1f).testTag("import_db_file_btn")
                     ) {
-                        Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Importar .db")
                     }
@@ -347,7 +347,7 @@ fun ImportExportScreen(
                         onClick = { exportDbLauncher.launch(dbManager.getCurrentDbName()) },
                         modifier = Modifier.weight(1f).testTag("export_db_file_btn")
                     ) {
-                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Exportar .db")
                     }
@@ -364,7 +364,7 @@ fun ImportExportScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Description,
+                        imageVector = Icons.Outlined.Description,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.secondary,
                         modifier = Modifier.size(22.dp)
@@ -399,7 +399,7 @@ fun ImportExportScreen(
                         },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Copiar SQL")
                     }
@@ -411,7 +411,7 @@ fun ImportExportScreen(
                         },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Guardar .sql")
                     }
@@ -447,7 +447,7 @@ fun ImportExportScreen(
                         onClick = { importSqlScriptLauncher.launch(arrayOf("*/*")) },
                         modifier = Modifier.weight(1.3f).testTag("import_sql_file_btn")
                     ) {
-                        Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Cargar .sql del teléfono")
                     }
@@ -500,7 +500,7 @@ fun ImportExportScreen(
                     if (isProcessing) {
                         CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary)
                     } else {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Icon(Icons.Outlined.PlayArrow, contentDescription = null)
                         Spacer(modifier = Modifier.width(6.dp))
                         Text("Ejecutar Script")
                     }
@@ -527,7 +527,7 @@ fun ImportExportScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.School,
+                        imageVector = Icons.Outlined.School,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(22.dp)
@@ -556,7 +556,7 @@ fun ImportExportScreen(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.School, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.School, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Cargar Sistema Universitario (Estudiantes, Cursos, Notas)")
                 }
@@ -572,7 +572,7 @@ fun ImportExportScreen(
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(Icons.Default.ShoppingCart, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.ShoppingCart, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Cargar Comercio Electrónico (Artículos, Categorías)")
                 }

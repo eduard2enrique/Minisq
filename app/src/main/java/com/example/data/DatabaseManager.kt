@@ -92,6 +92,8 @@ class DatabaseManager(private val context: Context) {
         when (template) {
             "ecommerce" -> createSampleEcommerce(file)
             "university" -> createSampleUniversity(file)
+            "projects" -> createSampleProjects(file)
+            "clinic" -> createSampleClinic(file)
             "sample" -> createSampleStore(file)
             else -> {
                 val db = SQLiteDatabase.openOrCreateDatabase(file, null)
@@ -468,6 +470,52 @@ class DatabaseManager(private val context: Context) {
         }
     }
 
+    suspend fun deleteMultipleRows(tableName: String, pkCol: String, pkValues: List<String>): SqlExecutionResult = withContext(Dispatchers.IO) {
+        if (pkValues.isEmpty()) {
+            return@withContext SqlExecutionResult(isSuccess = true, message = "No se seleccionaron filas.")
+        }
+        val db = getActiveDatabase()
+        try {
+            val placeholders = pkValues.joinToString(", ") { "?" }
+            val count = db.delete(tableName, "\"$pkCol\" IN ($placeholders)", pkValues.toTypedArray())
+            SqlExecutionResult(
+                isSuccess = true,
+                message = "Se eliminaron $count fila(s) de '$tableName'.",
+                affectedRows = count
+            )
+        } catch (e: Exception) {
+            SqlExecutionResult(
+                isSuccess = false,
+                message = "Error al eliminar filas: ${e.message}"
+            )
+        }
+    }
+
+    suspend fun getReferencedTableOptions(targetTable: String, targetCol: String, limit: Int = 100): List<Pair<String, String>> = withContext(Dispatchers.IO) {
+        val db = getActiveDatabase()
+        val list = mutableListOf<Pair<String, String>>()
+        try {
+            val cursor = db.rawQuery("SELECT * FROM \"$targetTable\" LIMIT $limit;", null)
+            cursor.use { c ->
+                val colNames = c.columnNames.toList()
+                val targetColIndex = colNames.indexOf(targetCol).takeIf { it >= 0 } ?: 0
+                val labelIndex = colNames.indexOfFirst {
+                    it != targetCol && (it.contains("nom", ignoreCase = true) || it.contains("name", ignoreCase = true) || it.contains("tit", ignoreCase = true) || it.contains("desc", ignoreCase = true))
+                }.takeIf { it >= 0 } ?: colNames.indexOfFirst { it != targetCol }.takeIf { it >= 0 } ?: targetColIndex
+
+                while (c.moveToNext()) {
+                    val idVal = c.getString(targetColIndex) ?: ""
+                    val labelVal = if (labelIndex != targetColIndex) c.getString(labelIndex) ?: "" else ""
+                    val display = if (labelVal.isNotBlank() && labelVal != idVal) "$idVal • $labelVal" else idVal
+                    if (idVal.isNotBlank()) {
+                        list.add(Pair(idVal, display))
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+        list
+    }
+
     suspend fun updateTableRow(tableName: String, pkCol: String, pkVal: String, values: Map<String, String>): Boolean = withContext(Dispatchers.IO) {
         val db = getActiveDatabase()
         val setClauses = values.keys.filter { it != pkCol }.joinToString(", ") { "\"$it\" = ?" }
@@ -497,6 +545,73 @@ class DatabaseManager(private val context: Context) {
             true
         } catch (_: Exception) {
             false
+        }
+    }
+
+    suspend fun addColumn(tableName: String, columnName: String, columnType: String, isNotNull: Boolean = false, defaultValue: String = ""): SqlExecutionResult = withContext(Dispatchers.IO) {
+        val cleanCol = columnName.trim().replace(Regex("[^a-zA-Z0-9_]"), "_")
+        if (cleanCol.isBlank()) {
+            return@withContext SqlExecutionResult(isSuccess = false, message = "El nombre de la columna no puede estar vacío.")
+        }
+        val type = if (columnType.isBlank()) "TEXT" else columnType.uppercase().trim()
+        val notNullClause = if (isNotNull && defaultValue.isNotBlank()) " NOT NULL DEFAULT $defaultValue" else if (defaultValue.isNotBlank()) " DEFAULT $defaultValue" else ""
+        val sql = "ALTER TABLE \"$tableName\" ADD COLUMN \"$cleanCol\" $type$notNullClause;"
+        return@withContext executeSql(sql)
+    }
+
+    suspend fun dropColumn(tableName: String, columnName: String): SqlExecutionResult = withContext(Dispatchers.IO) {
+        val db = getActiveDatabase()
+        // 1. Try native SQLite 3.35+ DROP COLUMN syntax
+        try {
+            db.execSQL("ALTER TABLE \"$tableName\" DROP COLUMN \"$columnName\";")
+            return@withContext SqlExecutionResult(
+                isSuccess = true,
+                message = "Columna '$columnName' eliminada exitosamente de '$tableName'."
+            )
+        } catch (e: Exception) {
+            // 2. Fallback: Transactional table rebuild procedure for earlier SQLite engines or complex schemas
+            try {
+                val schema = getTableSchema(tableName)
+                val remainingCols = schema?.columns?.filter { !it.name.equals(columnName, ignoreCase = true) } ?: emptyList()
+                if (remainingCols.isEmpty()) {
+                    return@withContext SqlExecutionResult(
+                        isSuccess = false,
+                        message = "No se puede eliminar la columna: la tabla debe conservar al menos una columna."
+                    )
+                }
+
+                db.beginTransaction()
+                val tempTable = "_temp_${tableName}_${System.currentTimeMillis()}"
+                val colDefs = remainingCols.map { col ->
+                    val sb = StringBuilder("\"${col.name}\" ${col.type.ifBlank { "TEXT" }}")
+                    if (col.isPrimaryKey) sb.append(" PRIMARY KEY")
+                    if (col.notNull && !col.isPrimaryKey) sb.append(" NOT NULL")
+                    if (!col.defaultValue.isNullOrBlank()) sb.append(" DEFAULT ${col.defaultValue}")
+                    sb.toString()
+                }.joinToString(", ")
+
+                val remainingNamesEscaped = remainingCols.joinToString(", ") { "\"${it.name}\"" }
+
+                db.execSQL("CREATE TABLE \"$tempTable\" ($colDefs);")
+                db.execSQL("INSERT INTO \"$tempTable\" ($remainingNamesEscaped) SELECT $remainingNamesEscaped FROM \"$tableName\";")
+                db.execSQL("DROP TABLE \"$tableName\";")
+                db.execSQL("ALTER TABLE \"$tempTable\" RENAME TO \"$tableName\";")
+                db.setTransactionSuccessful()
+                db.endTransaction()
+
+                SqlExecutionResult(
+                    isSuccess = true,
+                    message = "Columna '$columnName' eliminada exitosamente de '$tableName'."
+                )
+            } catch (ex: Exception) {
+                try {
+                    if (db.inTransaction()) db.endTransaction()
+                } catch (_: Exception) {}
+                SqlExecutionResult(
+                    isSuccess = false,
+                    message = "Error al eliminar columna: ${ex.message}"
+                )
+            }
         }
     }
 
@@ -764,5 +879,131 @@ class DatabaseManager(private val context: Context) {
         } finally {
             db.close()
         }
+    }
+
+    private fun createSampleProjects(file: File) {
+        val db = SQLiteDatabase.openOrCreateDatabase(file, null)
+        try {
+            db.execSQL("PRAGMA foreign_keys = ON;")
+            db.execSQL("""
+                CREATE TABLE proyectos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL,
+                    descripcion TEXT,
+                    presupuesto REAL DEFAULT 0.0,
+                    estado TEXT DEFAULT 'Activo'
+                );
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TABLE miembros (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL,
+                    rol TEXT NOT NULL,
+                    email TEXT UNIQUE
+                );
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TABLE tareas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    proyecto_id INTEGER,
+                    miembro_id INTEGER,
+                    titulo TEXT NOT NULL,
+                    prioridad TEXT DEFAULT 'Media',
+                    completada INTEGER DEFAULT 0,
+                    FOREIGN KEY (proyecto_id) REFERENCES proyectos(id) ON DELETE CASCADE,
+                    FOREIGN KEY (miembro_id) REFERENCES miembros(id) ON DELETE SET NULL
+                );
+            """.trimIndent())
+
+            db.execSQL("INSERT INTO proyectos (nombre, descripcion, presupuesto, estado) VALUES ('App Móvil MiniSQL', 'Desarrollo de editor SQLite para Android', 12500.0, 'En progreso'), ('Portal Web Clientes', 'Panel de administración en la nube', 8400.0, 'Planificación');")
+            db.execSQL("INSERT INTO miembros (nombre, rol, email) VALUES ('Eduardo Sanamé', 'Líder Técnico', 'eduardo@ejemplo.com'), ('Ana Gómez', 'Diseñadora UI/UX', 'ana@ejemplo.com'), ('Carlos Vera', 'Desarrollador Backend', 'carlos@ejemplo.com');")
+            db.execSQL("INSERT INTO tareas (proyecto_id, miembro_id, titulo, prioridad, completada) VALUES (1, 1, 'Implementar resaltado sintáctico', 'Alta', 1), (1, 2, 'Diseño de interfaz de tablas y proyectos', 'Alta', 1), (1, 3, 'Optimizar consultas SQLite', 'Media', 0), (2, 1, 'Arquitectura de base de datos', 'Alta', 0);")
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun createSampleClinic(file: File) {
+        val db = SQLiteDatabase.openOrCreateDatabase(file, null)
+        try {
+            db.execSQL("PRAGMA foreign_keys = ON;")
+            db.execSQL("""
+                CREATE TABLE medicos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL,
+                    especialidad TEXT NOT NULL,
+                    telefono TEXT
+                );
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TABLE pacientes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL,
+                    edad INTEGER,
+                    ciudad TEXT,
+                    grupo_sanguineo TEXT
+                );
+            """.trimIndent())
+            db.execSQL("""
+                CREATE TABLE citas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    paciente_id INTEGER,
+                    medico_id INTEGER,
+                    fecha TEXT NOT NULL,
+                    motivo TEXT,
+                    costo REAL DEFAULT 50.0,
+                    FOREIGN KEY (paciente_id) REFERENCES pacientes(id) ON DELETE CASCADE,
+                    FOREIGN KEY (medico_id) REFERENCES medicos(id)
+                );
+            """.trimIndent())
+
+            db.execSQL("INSERT INTO medicos (nombre, especialidad, telefono) VALUES ('Dr. Roberto Blanco', 'Cardiología', '+34 600 123 456'), ('Dra. Laura Díaz', 'Pediatría', '+34 600 987 654');")
+            db.execSQL("INSERT INTO pacientes (nombre, edad, ciudad, grupo_sanguineo) VALUES ('Marta Silva', 34, 'Madrid', 'O+'), ('Pedro Morales', 62, 'Barcelona', 'A+'), ('Elena Rios', 19, 'Valencia', 'B-');")
+            db.execSQL("INSERT INTO citas (paciente_id, medico_id, fecha, motivo, costo) VALUES (1, 1, '2026-10-28', 'Chequeo preventivo', 75.0), (2, 1, 'Seguimiento presión arterial', 60.0), (3, 2, 'Consulta general', 50.0);")
+        } finally {
+            db.close()
+        }
+    }
+
+    suspend fun getDatabaseTableSummaries(dbName: String): List<TableSummary> = withContext(Dispatchers.IO) {
+        val target = if (dbName.endsWith(".db")) dbName else "$dbName.db"
+        val file = File(dbDir, target)
+        if (!file.exists()) return@withContext emptyList()
+        val list = mutableListOf<TableSummary>()
+        try {
+            val db = if (currentDbName == target && activeDatabase?.isOpen == true) {
+                activeDatabase!!
+            } else {
+                SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY)
+            }
+            val shouldClose = (db != activeDatabase)
+            try {
+                val cursor = db.rawQuery(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'android_metadata' ORDER BY name;",
+                    null
+                )
+                cursor.use { c ->
+                    while (c.moveToNext()) {
+                        val tableName = c.getString(0)
+                        var count = 0L
+                        var colCount = 0
+                        try {
+                            val countCursor = db.rawQuery("SELECT COUNT(*) FROM \"$tableName\"", null)
+                            countCursor.use { cc -> if (cc.moveToFirst()) count = cc.getLong(0) }
+                        } catch (_: Exception) {}
+                        try {
+                            val infoCursor = db.rawQuery("PRAGMA table_info(\"$tableName\");", null)
+                            infoCursor.use { ic -> colCount = ic.count }
+                        } catch (_: Exception) {}
+                        list.add(TableSummary(name = tableName, rowCount = count, columnCount = colCount))
+                    }
+                }
+            } finally {
+                if (shouldClose) {
+                    try { db.close() } catch (_: Exception) {}
+                }
+            }
+        } catch (_: Exception) {}
+        list
     }
 }

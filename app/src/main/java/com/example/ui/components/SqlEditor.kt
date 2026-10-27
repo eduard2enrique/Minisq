@@ -5,8 +5,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -26,16 +26,20 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Redo
-import androidx.compose.material.icons.filled.Undo
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.CheckCircleOutline
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Functions
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Redo
+import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.Undo
+import androidx.compose.material.icons.outlined.ViewColumn
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -68,8 +72,12 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.IssueSeverity
+import com.example.data.SqlAutoCompleter
+import com.example.data.SqlSuggestion
 import com.example.data.SqlSyntaxIssue
 import com.example.data.SqlSyntaxValidator
+import com.example.data.SuggestionCategory
+import com.example.model.TableSchemaDetail
 import com.example.ui.theme.DarkEditorBackground
 import com.example.ui.theme.DarkSurface
 import com.example.ui.theme.DarkSurfaceBorder
@@ -83,6 +91,7 @@ fun SqlEditor(
     onValueChange: (TextFieldValue) -> Unit,
     availableTables: List<String> = emptyList(),
     availableColumns: List<String> = emptyList(),
+    tableSchemas: List<TableSchemaDetail> = emptyList(),
     modifier: Modifier = Modifier,
     isDark: Boolean = true,
     onValidationChanged: (List<SqlSyntaxIssue>) -> Unit = {}
@@ -90,6 +99,7 @@ fun SqlEditor(
     var fontSizeSp by remember { mutableFloatStateOf(14f) }
     var showDiagnosticsDetails by remember { mutableStateOf(true) }
     var showSyntaxLegendDialog by remember { mutableStateOf(false) }
+    var showQuickKeywordsBar by remember { mutableStateOf(true) }
 
     // Real-time static syntax validation
     val syntaxIssues by remember(value.text) {
@@ -169,49 +179,56 @@ fun SqlEditor(
         }
     }
 
-    // Autocomplete word detection
+    // Context- & Schema-Aware Autocomplete Suggestions
     val cursorIndex = value.selection.start
     val currentWord = remember(value.text, cursorIndex) {
-        extractCurrentWord(value.text, cursorIndex)
+        SqlAutoCompleter.extractCurrentWord(value.text, cursorIndex)
     }
 
-    val suggestions by remember(currentWord, availableTables, availableColumns) {
+    val suggestions by remember(value.text, cursorIndex, availableTables, availableColumns, tableSchemas) {
         derivedStateOf {
-            if (currentWord.length < 2) emptyList()
-            else {
-                val list = mutableListOf<Pair<String, String>>() // word to type badge
-                // Tables
-                availableTables.filter { it.contains(currentWord, ignoreCase = true) }
-                    .forEach { list.add(it to "tabla") }
-                // Columns
-                availableColumns.filter { it.contains(currentWord, ignoreCase = true) }
-                    .forEach { list.add(it to "columna") }
-                // Built-in SQL functions
-                SqlSyntaxVisualTransformation.FUNCTIONS.filter { it.startsWith(currentWord, ignoreCase = true) }
-                    .forEach { list.add(it to "función") }
-                // Data types
-                SqlSyntaxVisualTransformation.DATA_TYPES.filter { it.startsWith(currentWord, ignoreCase = true) }
-                    .forEach { list.add(it to "tipo") }
-                // Clauses & Keywords
-                SqlSyntaxVisualTransformation.KEYWORDS.filter { it.startsWith(currentWord, ignoreCase = true) }
-                    .forEach { list.add(it to "sql") }
-                list.distinctBy { it.first }.take(10)
-            }
+            SqlAutoCompleter.getSuggestions(
+                fullText = value.text,
+                cursorIndex = cursorIndex,
+                availableTables = availableTables,
+                availableColumns = availableColumns,
+                tableSchemas = tableSchemas
+            )
         }
     }
 
-    fun applySuggestion(suggestion: String) {
+    fun applySuggestion(suggestion: SqlSuggestion) {
         val raw = value.text
-        val start = (cursorIndex - currentWord.length).coerceAtLeast(0)
-        val end = cursorIndex.coerceAtMost(raw.length)
-        val newText = raw.substring(0, start) + suggestion + " " + raw.substring(end)
-        val newCursor = start + suggestion.length + 1
+        val cur = cursorIndex.coerceIn(0, raw.length)
+        val wordLen = currentWord.length
+        val start = (cur - wordLen).coerceAtLeast(0)
+        val end = cur.coerceAtMost(raw.length)
+        val insert = suggestion.insertText
+        val newText = raw.substring(0, start) + insert + raw.substring(end)
+        val targetCursor = (start + insert.length - suggestion.cursorOffsetFromEnd).coerceIn(0, newText.length)
+        updateValueWithHistory(TextFieldValue(newText, TextRange(targetCursor)))
+    }
+
+    fun insertQuickKeyword(kw: String) {
+        val raw = value.text
+        val cur = cursorIndex.coerceIn(0, raw.length)
+        val prefixSpace = if (cur > 0 && !raw[cur - 1].isWhitespace() && raw[cur - 1] != '(' && raw[cur - 1] != ',') " " else ""
+        val suffixSpace = if (kw == ";" || kw == "*") "" else " "
+        val snippet = "$prefixSpace$kw$suffixSpace"
+        val newText = raw.substring(0, cur) + snippet + raw.substring(cur)
+        val newCursor = cur + snippet.length
         updateValueWithHistory(TextFieldValue(newText, TextRange(newCursor)))
     }
 
-    val visualTransformation = remember(isDark, syntaxIssues) {
-        SqlSyntaxVisualTransformation(isDark, syntaxIssues)
+    val visualTransformation = remember(isDark, syntaxIssues, availableTables, availableColumns) {
+        SqlSyntaxVisualTransformation(
+            isDark = isDark,
+            issues = syntaxIssues,
+            schemaTables = availableTables.toSet(),
+            schemaColumns = availableColumns.toSet()
+        )
     }
+
     val editorBg = if (isDark) DarkEditorBackground else MaterialTheme.colorScheme.surfaceVariant
     val borderColor = if (isDark) DarkSurfaceBorder else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
     val textPrimary = MaterialTheme.colorScheme.onSurface
@@ -222,10 +239,12 @@ fun SqlEditor(
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp)),
         color = editorBg,
-        tonalElevation = 2.dp
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, borderColor),
+        tonalElevation = 1.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Editor Toolbar matching screenshot + syntax status
+            // Editor Toolbar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -253,7 +272,7 @@ fun SqlEditor(
                             .testTag("undo_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Undo,
+                            imageVector = Icons.Outlined.Undo,
                             contentDescription = "Deshacer",
                             tint = if (undoStack.isNotEmpty()) textPrimary else textMuted,
                             modifier = Modifier.size(18.dp)
@@ -268,7 +287,7 @@ fun SqlEditor(
                             .testTag("redo_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Redo,
+                            imageVector = Icons.Outlined.Redo,
                             contentDescription = "Rehacer",
                             tint = if (redoStack.isNotEmpty()) textPrimary else textMuted,
                             modifier = Modifier.size(18.dp)
@@ -282,7 +301,7 @@ fun SqlEditor(
                             .testTag("format_sql_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.AutoAwesome,
+                            imageVector = Icons.Outlined.AutoAwesome,
                             contentDescription = "Dar formato SQL",
                             tint = MaterialTheme.colorScheme.secondary,
                             modifier = Modifier.size(18.dp)
@@ -296,9 +315,23 @@ fun SqlEditor(
                             .testTag("syntax_palette_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Palette,
+                            imageVector = Icons.Outlined.Palette,
                             contentDescription = "Paleta de resaltado de sintaxis",
                             tint = Color(0xFF818CF8),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { showQuickKeywordsBar = !showQuickKeywordsBar },
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("toggle_quick_keywords_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Bolt,
+                            contentDescription = "Barra de palabras clave",
+                            tint = if (showQuickKeywordsBar) MaterialTheme.colorScheme.primary else textMuted,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -316,10 +349,10 @@ fun SqlEditor(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.CheckCircle,
+                                        imageVector = Icons.Outlined.CheckCircleOutline,
                                         contentDescription = null,
                                         tint = SqlSuccess,
-                                        modifier = Modifier.size(12.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
@@ -345,10 +378,10 @@ fun SqlEditor(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = if (errorCount > 0) Icons.Default.Error else Icons.Default.Warning,
+                                        imageVector = if (errorCount > 0) Icons.Outlined.ErrorOutline else Icons.Outlined.WarningAmber,
                                         contentDescription = null,
                                         tint = badgeColor,
-                                        modifier = Modifier.size(12.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
@@ -358,10 +391,10 @@ fun SqlEditor(
                                         fontWeight = FontWeight.Bold
                                     )
                                     Icon(
-                                        imageVector = if (showDiagnosticsDetails) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                        imageVector = if (showDiagnosticsDetails) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
                                         contentDescription = null,
                                         tint = badgeColor,
-                                        modifier = Modifier.size(12.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
                                 }
                             }
@@ -426,7 +459,7 @@ fun SqlEditor(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = if (issue.severity == IssueSeverity.ERROR) Icons.Default.Error else Icons.Default.Warning,
+                                    imageVector = if (issue.severity == IssueSeverity.ERROR) Icons.Outlined.ErrorOutline else Icons.Outlined.WarningAmber,
                                     contentDescription = null,
                                     tint = if (issue.severity == IssueSeverity.ERROR) SqlError else SqlWarning,
                                     modifier = Modifier.size(13.dp)
@@ -459,43 +492,122 @@ fun SqlEditor(
                 }
             }
 
-            // Autocomplete suggestions chip row
+            // Common SQL Keywords ribbon (Fast One-Tap access on mobile)
+            AnimatedVisibility(visible = showQuickKeywordsBar) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val quickKeywords = listOf(
+                        "SELECT", "*", "FROM", "WHERE", "AND", "OR", "JOIN", "ON",
+                        "ORDER BY", "GROUP BY", "LIMIT", "INSERT INTO", "UPDATE", "DELETE FROM", ";"
+                    )
+                    quickKeywords.forEach { kw ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { insertQuickKeyword(kw) }
+                                .testTag("quick_kw_$kw")
+                        ) {
+                            Text(
+                                text = kw,
+                                style = TextStyle(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (kw == "*" || kw == ";") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+                                ),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Schema-Aware Autocomplete Suggestions Bar
             if (suggestions.isNotEmpty()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                         .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Icon(
+                        imageVector = Icons.Outlined.AutoAwesome,
+                        contentDescription = "Sugerencias",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp)
+                    )
                     Text(
                         text = "Sugerencias:",
                         style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(end = 4.dp)
+                        modifier = Modifier.padding(end = 2.dp)
                     )
-                    suggestions.forEach { (word, badge) ->
+
+                    suggestions.forEachIndexed { index, suggestion ->
+                        val (categoryColor, categoryIcon) = when (suggestion.category) {
+                            SuggestionCategory.KEYWORD -> Color(0xFF818CF8) to Icons.Outlined.Code
+                            SuggestionCategory.TABLE -> Color(0xFF2DD4BF) to Icons.Outlined.TableChart
+                            SuggestionCategory.COLUMN -> Color(0xFF38BDF8) to Icons.Outlined.ViewColumn
+                            SuggestionCategory.FUNCTION -> Color(0xFFA78BFA) to Icons.Outlined.Functions
+                            SuggestionCategory.SNIPPET -> Color(0xFF34D399) to Icons.Outlined.AutoAwesome
+                            SuggestionCategory.OPERATOR -> Color(0xFFFBBF24) to Icons.Outlined.Bolt
+                        }
+
                         AssistChip(
-                            onClick = { applySuggestion(word) },
+                            onClick = { applySuggestion(suggestion) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = categoryIcon,
+                                    contentDescription = null,
+                                    tint = categoryColor,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            },
                             label = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(word, style = MaterialTheme.typography.labelSmall)
-                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        badge,
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                                        color = MaterialTheme.colorScheme.primary
+                                        text = suggestion.displayText,
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
                                     )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = categoryColor.copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = suggestion.category.label,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 8.5.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            ),
+                                            color = categoryColor,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
                                 }
                             },
                             colors = AssistChipDefaults.assistChipColors(
                                 containerColor = MaterialTheme.colorScheme.surface,
                                 labelColor = textPrimary
                             ),
-                            border = null,
-                            modifier = Modifier.height(28.dp)
+                            border = BorderStroke(1.dp, categoryColor.copy(alpha = 0.35f)),
+                            modifier = Modifier
+                                .height(30.dp)
+                                .testTag("autocomplete_chip_$index")
                         )
                     }
                 }
@@ -580,9 +692,10 @@ fun SqlSyntaxLegendDialog(
     isDark: Boolean,
     onDismiss: () -> Unit
 ) {
-    val bg = if (isDark) DarkSurface else MaterialTheme.colorScheme.surface
     val colorClause = if (isDark) Color(0xFF818CF8) else Color(0xFF4338CA)
-    val colorFunction = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
+    val colorTable = if (isDark) Color(0xFF2DD4BF) else Color(0xFF0D9488)
+    val colorColumn = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)
+    val colorFunction = if (isDark) Color(0xFFA78BFA) else Color(0xFF7C3AED)
     val colorType = if (isDark) Color(0xFFFB7185) else Color(0xFFBE123C)
     val colorString = if (isDark) Color(0xFF34D399) else Color(0xFF059669)
     val colorNumber = if (isDark) Color(0xFFFBBF24) else Color(0xFFD97706)
@@ -598,6 +711,8 @@ fun SqlSyntaxLegendDialog(
 
     val categories = listOf(
         SyntaxCategory("Cláusulas y Palabras Clave", colorClause, "SELECT, FROM, WHERE, JOIN, GROUP BY, INSERT INTO, CREATE TABLE", "Sentencias e instrucciones DML / DDL de SQLite"),
+        SyntaxCategory("Tablas del Esquema", colorTable, "clientes, pedidos, productos, detalles_pedido", "Nombres de tablas existentes en la base de datos actual"),
+        SyntaxCategory("Columnas del Esquema", colorColumn, "id, nombre, email, ciudad, saldo, precio", "Atributos y campos del esquema activo"),
         SyntaxCategory("Funciones Integradas", colorFunction, "COUNT(), SUM(), AVG(), COALESCE(), STRFTIME(), ROUND()", "Funciones nativas de agregación, matemáticas y cadenas"),
         SyntaxCategory("Tipos de Datos", colorType, "INTEGER, TEXT, REAL, BLOB, BOOLEAN, AUTOINCREMENT", "Afinidades de tipo para definición de esquemas"),
         SyntaxCategory("Literales de Texto (Strings)", colorString, "'Juan Pérez', 'Activo', '2026-10-23'", "Cadenas de caracteres delimitadas por comillas simples"),
@@ -615,7 +730,7 @@ fun SqlSyntaxLegendDialog(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Palette,
+                    imageVector = Icons.Outlined.Palette,
                     contentDescription = null,
                     tint = colorClause,
                     modifier = Modifier.size(24.dp)
@@ -631,7 +746,7 @@ fun SqlSyntaxLegendDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "El editor resalta automáticamente los elementos clave del lenguaje SQL para máxima legibilidad visual:",
+                    text = "El editor resalta automáticamente los elementos clave del lenguaje SQL y el esquema activo para máxima legibilidad visual:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -644,7 +759,7 @@ fun SqlSyntaxLegendDialog(
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
-                            text = "-- Consulta con resaltado activo:",
+                            text = "-- Consulta con resaltado sintáctico y de esquema:",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             color = colorComment,
@@ -652,17 +767,19 @@ fun SqlSyntaxLegendDialog(
                         )
                         Row {
                             Text("SELECT ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorClause)
-                            Text("ciudad, ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Text("ciudad, ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colorColumn)
                             Text("COUNT", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorFunction)
                             Text("(*), ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
                             Text("AVG", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorFunction)
-                            Text("(saldo) ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Text("(", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Text("saldo", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colorColumn)
+                            Text(") ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
                         }
                         Row {
                             Text("FROM ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorClause)
-                            Text("clientes ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Text("clientes ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorTable)
                             Text("WHERE ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorClause)
-                            Text("saldo ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Text("saldo ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colorColumn)
                             Text("> ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = colorOperator)
                             Text("100.50;", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colorNumber)
                         }
@@ -719,15 +836,6 @@ fun SqlSyntaxLegendDialog(
             }
         }
     )
-}
-
-private fun extractCurrentWord(text: String, cursor: Int): String {
-    if (cursor <= 0 || cursor > text.length) return ""
-    var start = cursor - 1
-    while (start >= 0 && (text[start].isLetterOrDigit() || text[start] == '_')) {
-        start--
-    }
-    return text.substring(start + 1, cursor)
 }
 
 fun formatSqlText(sql: String): String {

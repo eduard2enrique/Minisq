@@ -18,6 +18,8 @@ import java.util.regex.Pattern
  *
  * Implements lexical separation for:
  * - SQL Clauses & Keywords (SELECT, FROM, WHERE, JOIN, ORDER BY, etc.)
+ * - Schema Tables (clientes, productos, pedidos, etc.)
+ * - Schema Columns (id, nombre, email, ciudad, saldo, etc.)
  * - Built-in SQL Functions (COUNT, SUM, AVG, COALESCE, STRFTIME, etc.)
  * - SQLite Data Types (INTEGER, TEXT, REAL, BLOB, BOOLEAN, etc.)
  * - String Literals ('text' and "identifiers")
@@ -25,13 +27,12 @@ import java.util.regex.Pattern
  * - Single-line and Multi-line Comments (-- comment and /* block */)
  * - Operators (=, <>, !=, LIKE, ||, +, -, etc.)
  * - Real-time syntax issue underlines (warnings and errors)
- *
- * Excludes keywords and tokens inside comments and string literals to prevent
- * false highlighting.
  */
 class SqlSyntaxVisualTransformation(
     private val isDark: Boolean = true,
-    private val issues: List<SqlSyntaxIssue> = emptyList()
+    private val issues: List<SqlSyntaxIssue> = emptyList(),
+    private val schemaTables: Set<String> = emptySet(),
+    private val schemaColumns: Set<String> = emptySet()
 ) : VisualTransformation {
 
     companion object {
@@ -73,9 +74,8 @@ class SqlSyntaxVisualTransformation(
         // All vocabulary for autocomplete
         val ALL_VOCABULARY = (KEYWORDS + FUNCTIONS + DATA_TYPES).toList().sorted()
 
-        // Compiled Regular Expressions
+        // Compiled Regular Expressions for invariant language syntax
         private val COMMENTS_REGEX = Pattern.compile("(--[^\r\n]*|/\\*[\\s\\S]*?(\\*/|$))")
-        // Handles closed and typing unclosed single/double quotes without spanning newlines
         private val STRINGS_REGEX = Pattern.compile("('(?:''|[^'\\r\\n])*'?|\"(?:\"\"|[^\"\\r\\n])*\"?)")
         private val NUMBERS_REGEX = Pattern.compile("\\b(0x[0-9a-fA-F]+|\\d+(\\.\\d+)?([eE][+-]?\\d+)?)\\b")
         private val KEYWORDS_REGEX = Pattern.compile(
@@ -93,6 +93,29 @@ class SqlSyntaxVisualTransformation(
         private val OPERATORS_REGEX = Pattern.compile("(=|!=|<>|<=|>=|<|>|\\|\\||\\+|-|\\*|/|%|&|\\||~)")
     }
 
+    // Dynamic patterns for active database schema tables and columns
+    private val tablesPattern: Pattern? by lazy {
+        val validTables = schemaTables.filter { it.isNotBlank() && !KEYWORDS.contains(it.uppercase()) }
+        if (validTables.isNotEmpty()) {
+            Pattern.compile(
+                "\\b(${validTables.joinToString("|") { Pattern.quote(it) }})\\b",
+                Pattern.CASE_INSENSITIVE
+            )
+        } else null
+    }
+
+    private val columnsPattern: Pattern? by lazy {
+        val validColumns = schemaColumns.filter {
+            it.isNotBlank() && !KEYWORDS.contains(it.uppercase()) && !schemaTables.contains(it)
+        }
+        if (validColumns.isNotEmpty()) {
+            Pattern.compile(
+                "\\b(${validColumns.joinToString("|") { Pattern.quote(it) }})\\b",
+                Pattern.CASE_INSENSITIVE
+            )
+        } else null
+    }
+
     override fun filter(text: AnnotatedString): TransformedText {
         val raw = text.text
         if (raw.isEmpty()) {
@@ -103,7 +126,9 @@ class SqlSyntaxVisualTransformation(
 
         // Semantic Colors palette based on current theme (Dark / Light)
         val colorClause = if (isDark) Color(0xFF818CF8) else Color(0xFF4338CA)   // Electric Indigo / Deep Indigo
-        val colorFunction = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7) // Sky / Cyan
+        val colorTable = if (isDark) Color(0xFF2DD4BF) else Color(0xFF0D9488)    // Vibrant Teal / Pine Teal (Schema Tables)
+        val colorColumn = if (isDark) Color(0xFF38BDF8) else Color(0xFF0284C7)   // Sky Blue / Ocean Blue (Schema Columns)
+        val colorFunction = if (isDark) Color(0xFFA78BFA) else Color(0xFF7C3AED) // Soft Violet / Deep Violet
         val colorType = if (isDark) Color(0xFFFB7185) else Color(0xFFBE123C)     // Rose / Crimson
         val colorString = if (isDark) Color(0xFF34D399) else Color(0xFF059669)   // Mint Emerald / Forest
         val colorNumber = if (isDark) Color(0xFFFBBF24) else Color(0xFFD97706)   // Amber Gold
@@ -135,7 +160,6 @@ class SqlSyntaxVisualTransformation(
         while (stringMatcher.find()) {
             val start = stringMatcher.start()
             val end = stringMatcher.end()
-            // Check if string is inside a comment
             if (!isRangeProtected(start, end, protectedRanges)) {
                 builder.addStyle(
                     SpanStyle(
@@ -183,7 +207,7 @@ class SqlSyntaxVisualTransformation(
             }
         }
 
-        // 5. Highlight SQL Clauses and Keywords
+        // 5. Highlight SQL Clauses and Keywords (SELECT, FROM, WHERE, etc.)
         val kwMatcher = KEYWORDS_REGEX.matcher(raw)
         while (kwMatcher.find()) {
             val start = kwMatcher.start()
@@ -200,7 +224,45 @@ class SqlSyntaxVisualTransformation(
             }
         }
 
-        // 6. Highlight Numeric Literals
+        // 6. Highlight Schema Tables (clientes, productos, etc.)
+        tablesPattern?.let { pattern ->
+            val tableMatcher = pattern.matcher(raw)
+            while (tableMatcher.find()) {
+                val start = tableMatcher.start()
+                val end = tableMatcher.end()
+                if (!isRangeProtected(start, end, protectedRanges)) {
+                    builder.addStyle(
+                        SpanStyle(
+                            color = colorTable,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        start,
+                        end
+                    )
+                }
+            }
+        }
+
+        // 7. Highlight Schema Columns (id, nombre, email, etc.)
+        columnsPattern?.let { pattern ->
+            val colMatcher = pattern.matcher(raw)
+            while (colMatcher.find()) {
+                val start = colMatcher.start()
+                val end = colMatcher.end()
+                if (!isRangeProtected(start, end, protectedRanges)) {
+                    builder.addStyle(
+                        SpanStyle(
+                            color = colorColumn,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        start,
+                        end
+                    )
+                }
+            }
+        }
+
+        // 8. Highlight Numeric Literals
         val numMatcher = NUMBERS_REGEX.matcher(raw)
         while (numMatcher.find()) {
             val start = numMatcher.start()
@@ -217,7 +279,7 @@ class SqlSyntaxVisualTransformation(
             }
         }
 
-        // 7. Highlight Operators
+        // 9. Highlight Operators
         val opMatcher = OPERATORS_REGEX.matcher(raw)
         while (opMatcher.find()) {
             val start = opMatcher.start()
@@ -234,7 +296,7 @@ class SqlSyntaxVisualTransformation(
             }
         }
 
-        // 8. Highlight Syntactic Issues & Errors with visual underlines
+        // 10. Highlight Syntactic Issues & Errors with visual underlines
         for (issue in issues) {
             val start = issue.startIndex.coerceIn(0, raw.length)
             val end = issue.endIndex.coerceIn(start, raw.length)
@@ -261,7 +323,6 @@ class SqlSyntaxVisualTransformation(
 
     private fun isRangeProtected(start: Int, end: Int, protectedList: List<IntRange>): Boolean {
         for (range in protectedList) {
-            // Overlaps if max(start1, start2) < min(end1, end2)
             if (maxOf(start, range.first) < minOf(end, range.last + 1)) {
                 return true
             }

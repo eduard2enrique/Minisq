@@ -17,16 +17,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -89,7 +89,7 @@ fun DatabaseSelectorDialog(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Storage,
+                        imageVector = Icons.Outlined.Storage,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -97,7 +97,7 @@ fun DatabaseSelectorDialog(
                     Text("Bases de Datos Locales")
                 }
                 IconButton(onClick = onDismiss) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar")
+                    Icon(imageVector = Icons.Outlined.Close, contentDescription = "Cerrar")
                 }
             }
         },
@@ -133,7 +133,7 @@ fun DatabaseSelectorDialog(
                                         MaterialTheme.colorScheme.surfaceVariant
                                     }
                                 ),
-                                shape = RoundedCornerShape(12.dp)
+                                shape = RoundedCornerShape(14.dp)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -147,7 +147,7 @@ fun DatabaseSelectorDialog(
                                         modifier = Modifier.weight(1f)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Folder,
+                                            imageVector = Icons.Outlined.Folder,
                                             contentDescription = null,
                                             tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -177,7 +177,7 @@ fun DatabaseSelectorDialog(
                                             modifier = Modifier.size(32.dp)
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Edit,
+                                                imageVector = Icons.Outlined.Edit,
                                                 contentDescription = "Renombrar",
                                                 modifier = Modifier.size(16.dp)
                                             )
@@ -189,7 +189,7 @@ fun DatabaseSelectorDialog(
                                                 modifier = Modifier.size(32.dp)
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Default.Delete,
+                                                    imageVector = Icons.Outlined.DeleteOutline,
                                                     contentDescription = "Eliminar",
                                                     tint = MaterialTheme.colorScheme.error,
                                                     modifier = Modifier.size(16.dp)
@@ -205,9 +205,10 @@ fun DatabaseSelectorDialog(
                     Spacer(modifier = Modifier.height(12.dp))
                     Button(
                         onClick = { showCreateSection = true },
+                        shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth().testTag("add_new_db_btn")
                     ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                        Icon(imageVector = Icons.Outlined.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Crear Nueva Base de Datos")
                     }
@@ -324,7 +325,7 @@ fun QueryHistoryDialog(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.History,
+                        imageVector = Icons.Outlined.History,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -332,7 +333,7 @@ fun QueryHistoryDialog(
                     Text("Historial de Consultas")
                 }
                 IconButton(onClick = onDismiss) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar")
+                    Icon(imageVector = Icons.Outlined.Close, contentDescription = "Cerrar")
                 }
             }
         },
@@ -546,7 +547,7 @@ fun SavedQueriesDialog(
                                     }
                                     IconButton(onClick = { onDeleteSaved(item.id) }) {
                                         Icon(
-                                            imageVector = Icons.Default.Delete,
+                                            imageVector = Icons.Outlined.DeleteOutline,
                                             contentDescription = "Eliminar",
                                             tint = MaterialTheme.colorScheme.error,
                                             modifier = Modifier.size(18.dp)
@@ -614,7 +615,7 @@ fun SqlExamplesDialog(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.School,
+                        imageVector = Icons.Outlined.School,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -622,7 +623,7 @@ fun SqlExamplesDialog(
                     Text("Ejemplos Didácticos SQL")
                 }
                 IconButton(onClick = onDismiss) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar")
+                    Icon(imageVector = Icons.Outlined.Close, contentDescription = "Cerrar")
                 }
             }
         },

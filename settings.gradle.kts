@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "MiniSQL"
+rootProject.name = "MiniSQL Pro"
 
 include(":app")

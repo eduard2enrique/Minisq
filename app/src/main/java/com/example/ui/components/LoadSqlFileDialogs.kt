@@ -20,18 +20,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Science
-import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.CheckCircleOutline
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Key
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Science
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -87,7 +87,7 @@ fun LoadSqlOptionsDialog(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FolderOpen,
+                            imageVector = Icons.Outlined.FolderOpen,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(20.dp)
@@ -104,7 +104,7 @@ fun LoadSqlOptionsDialog(
                     }
                 }
                 IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "Cerrar", modifier = Modifier.size(18.dp))
+                    Icon(Icons.Outlined.Close, contentDescription = "Cerrar", modifier = Modifier.size(18.dp))
                 }
             }
         },
@@ -117,7 +117,7 @@ fun LoadSqlOptionsDialog(
             ) {
                 // Option 1: Load .sql file from phone storage (PRIMARY OPTION)
                 LoadOptionCard(
-                    icon = Icons.Default.PhoneAndroid,
+                    icon = Icons.Outlined.PhoneAndroid,
                     title = "Cargar archivo .sql del teléfono",
                     subtitle = "Selecciona un archivo .sql del almacenamiento del teléfono con estructuras CREATE TABLE, índices e inserciones.",
                     badge = "Almacenamiento Local",
@@ -131,7 +131,7 @@ fun LoadSqlOptionsDialog(
 
                 // Option 2: Generate and load demo .sql file with full table structure
                 LoadOptionCard(
-                    icon = Icons.Default.Science,
+                    icon = Icons.Outlined.Science,
                     title = "Generar y cargar .sql de prueba",
                     subtitle = "Crea y carga un archivo 'empresa_erp_estructura.sql' con 4 tablas (departamentos, empleados, proyectos, asignaciones) y claves foráneas.",
                     badge = "Demo Estructuras",
@@ -145,7 +145,7 @@ fun LoadSqlOptionsDialog(
 
                 // Option 3: Saved queries inside the app
                 LoadOptionCard(
-                    icon = Icons.Default.Bookmark,
+                    icon = Icons.Outlined.BookmarkBorder,
                     title = "Consultas guardadas en la app",
                     subtitle = "Reutiliza o gestiona consultas SQL guardadas previamente en la base de datos interna.",
                     badge = "Guardadas",
@@ -159,7 +159,7 @@ fun LoadSqlOptionsDialog(
 
                 // Option 4: Educational SQL templates & examples
                 LoadOptionCard(
-                    icon = Icons.Default.School,
+                    icon = Icons.Outlined.School,
                     title = "Plantillas didácticas SQL",
                     subtitle = "Colección de consultas SELECT, JOIN relacionales, GROUP BY y agregaciones estadísticas.",
                     badge = "Didáctico",
@@ -280,7 +280,7 @@ fun SqlFileInspectionDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Description,
+                        imageVector = Icons.Outlined.Description,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(22.dp)
@@ -384,7 +384,7 @@ fun SqlFileInspectionDialog(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.TableChart,
+                                imageVector = Icons.Outlined.TableChart,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(16.dp)
@@ -485,7 +485,7 @@ fun SqlFileInspectionDialog(
                 modifier = Modifier.testTag("execute_loaded_sql_btn"),
                 shape = RoundedCornerShape(18.dp)
             ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text("Ejecutar y Crear Tablas")
             }

@@ -4,6 +4,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -24,20 +25,24 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CleaningServices
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Input
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.CheckCircleOutline
+import androidx.compose.material.icons.outlined.CleaningServices
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Input
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -189,16 +194,20 @@ fun QueryScreen(
     // Available table names & column names for autocomplete
     val tableNames = remember(tables) { tables.map { it.name } }
     var allColumns by remember { mutableStateOf<List<String>>(emptyList()) }
+    var allTableSchemas by remember { mutableStateOf<List<com.example.model.TableSchemaDetail>>(emptyList()) }
 
-    // Load columns on mount
+    // Load columns and schema details on mount / table changes
     remember(tables) {
         scope.launch {
+            val schemas = mutableListOf<com.example.model.TableSchemaDetail>()
             val cols = mutableListOf<String>()
             for (t in tables) {
                 val schema = dbManager.getTableSchema(t.name)
+                schemas.add(schema)
                 cols.addAll(schema.columns.map { it.name })
             }
             allColumns = cols.distinct()
+            allTableSchemas = schemas
         }
     }
 
@@ -293,7 +302,7 @@ fun QueryScreen(
             .verticalScroll(scrollState)
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
-        // Quick Action Chips matching screenshot
+        // Quick Action Chips in sleek iOS squircle pills
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -304,36 +313,53 @@ fun QueryScreen(
             AssistChip(
                 onClick = { insertTemplate("create") },
                 label = { Text("+ Crear tabla", style = MaterialTheme.typography.labelSmall) },
-                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                leadingIcon = { Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier.testTag("quick_create_table_chip")
             )
             AssistChip(
                 onClick = { insertTemplate("insert") },
-                label = { Text("📥 Insertar", style = MaterialTheme.typography.labelSmall) },
-                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                label = { Text("Insertar", style = MaterialTheme.typography.labelSmall) },
+                leadingIcon = { Icon(Icons.Outlined.Input, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surface)
             )
             AssistChip(
                 onClick = { insertTemplate("select") },
-                label = { Text("🔍 Consultar", style = MaterialTheme.typography.labelSmall) },
-                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                label = { Text("Consultar", style = MaterialTheme.typography.labelSmall) },
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surface)
             )
             AssistChip(
                 onClick = { insertTemplate("join") },
-                label = { Text("🔗 Join", style = MaterialTheme.typography.labelSmall) },
-                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                label = { Text("Join", style = MaterialTheme.typography.labelSmall) },
+                leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surface)
             )
             AssistChip(
                 onClick = { insertTemplate("group") },
-                label = { Text("📊 Agrupar", style = MaterialTheme.typography.labelSmall) },
-                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                label = { Text("Agrupar", style = MaterialTheme.typography.labelSmall) },
+                leadingIcon = { Icon(Icons.Outlined.BarChart, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surface)
             )
             AssistChip(
                 onClick = onOpenHistoryDrawer,
-                label = { Text("🕒 Historial (20)", style = MaterialTheme.typography.labelSmall) },
+                label = { Text("Historial (20)", style = MaterialTheme.typography.labelSmall) },
+                leadingIcon = { Icon(Icons.Outlined.History, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
                 colors = AssistChipDefaults.assistChipColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
-                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                    labelColor = MaterialTheme.colorScheme.primary
                 ),
                 modifier = Modifier.testTag("quick_history_drawer_chip")
             )
@@ -347,145 +373,245 @@ fun QueryScreen(
             onValueChange = { sqlQuery = it },
             availableTables = tableNames,
             availableColumns = allColumns,
+            tableSchemas = allTableSchemas,
             isDark = isDark,
             modifier = Modifier.testTag("sql_editor_component")
         )
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Bottom Action Buttons matching screenshot
-        FlowRow(
+        // iOS & AI Studio Styled Bottom Action Center
+        Column(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Execute Primary Button
-            Button(
-                onClick = { executeCurrentSql() },
-                enabled = !isExecuting,
-                modifier = Modifier
-                    .height(44.dp)
-                    .testTag("execute_sql_button"),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ),
-                shape = RoundedCornerShape(22.dp)
+            // Row 1: Primary Action & Quick Clear
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isExecuting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Ejecutando...", fontWeight = FontWeight.Bold)
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Ejecutar",
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Ejecutar", fontWeight = FontWeight.Bold)
+                // Execute Hero Button (iOS primary pill with electric blue & drawn play arrow)
+                Button(
+                    onClick = { executeCurrentSql() },
+                    enabled = !isExecuting,
+                    modifier = Modifier
+                        .weight(1.65f)
+                        .height(48.dp)
+                        .testTag("execute_sql_button"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp, pressedElevation = 0.dp)
+                ) {
+                    if (isExecuting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Ejecutando...", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.PlayArrow,
+                            contentDescription = "Ejecutar",
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Ejecutar", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    }
+                }
+
+                // Clear Button (iOS soft card with drawn outline cleaning icon)
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { sqlQuery = TextFieldValue("", TextRange(0)) }
+                        .testTag("clear_sql_button"),
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                    tonalElevation = 1.dp
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CleaningServices,
+                            contentDescription = "Limpiar",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "Limpiar",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
             }
 
-            // Clear Button
-            FilledTonalButton(
-                onClick = { sqlQuery = TextFieldValue("", TextRange(0)) },
-                modifier = Modifier.height(44.dp).testTag("clear_sql_button"),
-                shape = RoundedCornerShape(22.dp)
+            // Row 2: Secondary Tool Strip (Balanced 4-button row with AI Studio drawn outline icons)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.CleaningServices,
-                    contentDescription = "Limpiar",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Limpiar")
-            }
+                // 1. Ejemplos (AI Studio Sparkle / AutoAwesome drawn outline)
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { showExamplesDialog = true }
+                        .testTag("sql_examples_button"),
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                    tonalElevation = 1.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.AutoAwesome,
+                            contentDescription = "Ejemplos",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Ejemplos",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
 
-            // Examples Button
-            FilledTonalButton(
-                onClick = { showExamplesDialog = true },
-                modifier = Modifier.height(44.dp).testTag("sql_examples_button"),
-                shape = RoundedCornerShape(22.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.School,
-                    contentDescription = "Ejemplos",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Ejemplos")
-            }
+                // 2. Historial (Drawn outline clock)
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onOpenHistoryDrawer() }
+                        .testTag("query_history_button"),
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                    tonalElevation = 1.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.History,
+                            contentDescription = "Historial",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Historial",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
 
-            // Save Query Button
-            FilledTonalButton(
-                onClick = {
-                    isSavingCurrent = true
-                    showSavedDialog = true
-                },
-                modifier = Modifier.height(44.dp).testTag("save_query_button"),
-                shape = RoundedCornerShape(22.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Save,
-                    contentDescription = "Guardar",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Guardar")
-            }
+                // 3. Guardar (Drawn outline bookmark / diskette)
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            isSavingCurrent = true
+                            showSavedDialog = true
+                        }
+                        .testTag("save_query_button"),
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                    tonalElevation = 1.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.BookmarkBorder,
+                            contentDescription = "Guardar",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Guardar",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
 
-            // History Button (Opens lateral drawer panel)
-            FilledTonalButton(
-                onClick = onOpenHistoryDrawer,
-                modifier = Modifier.height(44.dp).testTag("query_history_button"),
-                shape = RoundedCornerShape(22.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.History,
-                    contentDescription = "Historial lateral (20)",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Historial (20)")
-            }
-
-            // Load SQL Menu Button (Opens full options: Phone file, Demo file, Saved queries, Examples)
-            FilledTonalButton(
-                onClick = {
-                    showLoadOptionsDialog = true
-                },
-                modifier = Modifier.height(44.dp).testTag("load_query_button"),
-                shape = RoundedCornerShape(22.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.FolderOpen,
-                    contentDescription = "Cargar",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Cargar")
-            }
-
-            // Direct Phone .sql File Picker Button
-            FilledTonalButton(
-                onClick = {
-                    openSqlDocumentLauncher.launch(arrayOf("*/*"))
-                },
-                modifier = Modifier.height(44.dp).testTag("load_sql_file_direct_btn"),
-                shape = RoundedCornerShape(22.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.FileUpload,
-                    contentDescription = "Cargar archivo .sql del teléfono",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Cargar .sql")
+                // 4. Cargar (Drawn outline folder / SQL picker)
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { showLoadOptionsDialog = true }
+                        .testTag("load_query_button"),
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                    tonalElevation = 1.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.FolderOpen,
+                            contentDescription = "Cargar",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Cargar",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
             }
         }
 
@@ -505,7 +631,7 @@ fun QueryScreen(
                         MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
                     }
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(14.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -514,7 +640,7 @@ fun QueryScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = if (result.isSuccess) Icons.Default.CheckCircle else Icons.Default.Error,
+                        imageVector = if (result.isSuccess) Icons.Outlined.CheckCircleOutline else Icons.Outlined.ErrorOutline,
                         contentDescription = null,
                         tint = if (result.isSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(20.dp)
@@ -568,7 +694,7 @@ fun QueryScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.TableChart,
+                                        imageVector = Icons.Outlined.TableChart,
                                         contentDescription = "Tabla",
                                         tint = if (resultViewMode == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp)
@@ -596,7 +722,7 @@ fun QueryScreen(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.BarChart,
+                                        imageVector = Icons.Outlined.BarChart,
                                         contentDescription = "Gráfico",
                                         tint = if (resultViewMode == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(16.dp)
@@ -676,7 +802,7 @@ fun QueryScreen(
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Error,
+                        imageVector = Icons.Outlined.ErrorOutline,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.error,
                         modifier = Modifier.size(22.dp)

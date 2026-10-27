@@ -12,16 +12,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = SqlBlueLight,
-    onPrimary = Color(0xFF0F172A),
-    primaryContainer = SqlBlueDark,
+    primary = SqlBlue,
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFF1E3A8A),
     onPrimaryContainer = Color(0xFFDBEAFE),
     secondary = SqlCyan,
-    onSecondary = Color(0xFF082F49),
+    onSecondary = Color.White,
     secondaryContainer = Color(0xFF164E63),
     onSecondaryContainer = Color(0xFFCFFAFE),
     tertiary = SqlTeal,
-    onTertiary = Color(0xFF042F2E),
+    onTertiary = Color.White,
     background = DarkBackground,
     onBackground = DarkTextPrimary,
     surface = DarkSurface,
@@ -34,10 +34,10 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = SqlBlueDark,
+    primary = SqlBlue,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFDBEAFE),
-    onPrimaryContainer = Color(0xFF1E3A8A),
+    primaryContainer = Color(0xFFE0EDFF),
+    onPrimaryContainer = Color(0xFF0056B3),
     secondary = Color(0xFF0284C7),
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFE0F2FE),

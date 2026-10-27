@@ -24,15 +24,15 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Input
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.CheckCircleOutline
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Input
+import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -141,12 +141,12 @@ fun HistorySideDrawer(
                     Box(
                         modifier = Modifier
                             .size(34.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.History,
+                            imageVector = Icons.Outlined.History,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onPrimaryContainer,
                             modifier = Modifier.size(20.dp)
@@ -185,7 +185,7 @@ fun HistorySideDrawer(
                 }
 
                 IconButton(onClick = onCloseDrawer, modifier = Modifier.size(32.dp)) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar panel")
+                    Icon(imageVector = Icons.Outlined.Close, contentDescription = "Cerrar panel")
                 }
             }
 
@@ -198,7 +198,7 @@ fun HistorySideDrawer(
                 placeholder = { Text("Buscar en historial...", style = MaterialTheme.typography.bodySmall) },
                 leadingIcon = {
                     Icon(
-                        imageVector = Icons.Default.Search,
+                        imageVector = Icons.Outlined.Search,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
@@ -206,7 +206,7 @@ fun HistorySideDrawer(
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(20.dp)) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = "Limpiar")
+                            Icon(imageVector = Icons.Outlined.Close, contentDescription = "Limpiar")
                         }
                     }
                 },
@@ -219,7 +219,7 @@ fun HistorySideDrawer(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
                 ),
-                shape = RoundedCornerShape(10.dp)
+                shape = RoundedCornerShape(12.dp)
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -263,7 +263,7 @@ fun HistorySideDrawer(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
-                            imageVector = Icons.Default.History,
+                            imageVector = Icons.Outlined.History,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                             modifier = Modifier.size(44.dp)
@@ -288,7 +288,8 @@ fun HistorySideDrawer(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
                 ) {
                     itemsIndexed(filteredQueries, key = { _, item -> item.id }) { index, item ->
                         Card(
@@ -296,7 +297,7 @@ fun HistorySideDrawer(
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant
                             ),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(14.dp)
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
                                 // Top Row: Badge, Status, Time
@@ -307,7 +308,7 @@ fun HistorySideDrawer(
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Surface(
-                                            shape = RoundedCornerShape(4.dp),
+                                            shape = RoundedCornerShape(6.dp),
                                             color = MaterialTheme.colorScheme.surface
                                         ) {
                                             Text(
@@ -323,10 +324,10 @@ fun HistorySideDrawer(
 
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(
-                                                imageVector = if (item.isSuccess) Icons.Default.CheckCircle else Icons.Default.Error,
+                                                imageVector = if (item.isSuccess) Icons.Outlined.CheckCircleOutline else Icons.Outlined.ErrorOutline,
                                                 contentDescription = null,
                                                 tint = if (item.isSuccess) SqlSuccess else SqlError,
-                                                modifier = Modifier.size(12.dp)
+                                                modifier = Modifier.size(13.dp)
                                             )
                                             Spacer(modifier = Modifier.width(3.dp))
                                             Text(
@@ -350,10 +351,10 @@ fun HistorySideDrawer(
                                             modifier = Modifier.size(22.dp)
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.Close,
+                                                imageVector = Icons.Outlined.Close,
                                                 contentDescription = "Eliminar de historial",
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                                modifier = Modifier.size(12.dp)
+                                                modifier = Modifier.size(13.dp)
                                             )
                                         }
                                     }
@@ -365,19 +366,19 @@ fun HistorySideDrawer(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(6.dp))
+                                        .clip(RoundedCornerShape(8.dp))
                                         .background(MaterialTheme.colorScheme.surface)
                                         .border(
                                             0.8.dp,
                                             MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                                            RoundedCornerShape(6.dp)
+                                            RoundedCornerShape(8.dp)
                                         )
                                         .clickable {
                                             onSelectQuery(item.sql)
                                             onCloseDrawer()
                                         }
                                         .padding(8.dp)
-                                ) {
+                                 ) {
                                     Text(
                                         text = item.sql,
                                         style = MaterialTheme.typography.bodySmall.copy(
@@ -406,13 +407,14 @@ fun HistorySideDrawer(
                                         },
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(30.dp),
+                                            .height(32.dp),
+                                        shape = RoundedCornerShape(10.dp),
                                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Input,
+                                            imageVector = Icons.Outlined.Input,
                                             contentDescription = null,
-                                            modifier = Modifier.size(12.dp)
+                                            modifier = Modifier.size(13.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text("Cargar", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
@@ -425,7 +427,8 @@ fun HistorySideDrawer(
                                         },
                                         modifier = Modifier
                                             .weight(1.1f)
-                                            .height(30.dp),
+                                            .height(32.dp),
+                                        shape = RoundedCornerShape(10.dp),
                                         colors = ButtonDefaults.filledTonalButtonColors(
                                             containerColor = MaterialTheme.colorScheme.primaryContainer,
                                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
@@ -433,9 +436,9 @@ fun HistorySideDrawer(
                                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.PlayArrow,
+                                            imageVector = Icons.Outlined.PlayArrow,
                                             contentDescription = null,
-                                            modifier = Modifier.size(12.dp)
+                                            modifier = Modifier.size(13.dp)
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text("Ejecutar", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
@@ -443,10 +446,10 @@ fun HistorySideDrawer(
 
                                     IconButton(
                                         onClick = { copyToClipboard(item.sql) },
-                                        modifier = Modifier.size(30.dp)
+                                        modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.ContentCopy,
+                                            imageVector = Icons.Outlined.ContentCopy,
                                             contentDescription = "Copiar SQL",
                                             tint = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.size(14.dp)

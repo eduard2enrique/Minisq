@@ -26,10 +26,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.PieChart
-import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.PieChart
+import androidx.compose.material.icons.outlined.ShowChart
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -190,9 +190,9 @@ fun SqlQueryChart(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = when (selectedChartType) {
-                            ChartType.BAR -> Icons.Default.BarChart
-                            ChartType.LINE -> Icons.Default.ShowChart
-                            ChartType.PIE -> Icons.Default.PieChart
+                            ChartType.BAR -> Icons.Outlined.BarChart
+                            ChartType.LINE -> Icons.Outlined.ShowChart
+                            ChartType.PIE -> Icons.Outlined.PieChart
                         },
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,

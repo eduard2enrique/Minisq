@@ -21,10 +21,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -99,7 +99,7 @@ fun SpreadsheetImportDialog(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.Description,
+                        imageVector = Icons.Outlined.Description,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(24.dp)
@@ -108,7 +108,7 @@ fun SpreadsheetImportDialog(
                     Text("Importar CSV / Excel")
                 }
                 IconButton(onClick = onDismiss, enabled = !isImporting) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar")
+                    Icon(imageVector = Icons.Outlined.Close, contentDescription = "Cerrar")
                 }
             }
         },
@@ -198,7 +198,7 @@ fun SpreadsheetImportDialog(
                             onClick = { expandedExisting = true },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Icon(Icons.Default.TableChart, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Outlined.TableChart, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Tabla destino: $selectedExistingTable")
                         }
@@ -371,7 +371,7 @@ fun SpreadsheetImportDialog(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Importando...")
                 } else {
-                    Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Outlined.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Importar a SQLite")
                 }

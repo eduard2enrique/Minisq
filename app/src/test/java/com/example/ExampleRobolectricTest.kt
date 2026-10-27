@@ -19,7 +19,7 @@ class ExampleRobolectricTest {
   fun `read app_name string from context`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
-    assertEquals("MiniSQL", appName)
+    assertEquals("MiniSQL Pro", appName)
   }
 
   @Test
@@ -241,5 +241,155 @@ class ExampleRobolectricTest {
     )
     assertTrue(queryResult.isSuccess)
     assertTrue(queryResult.rows.isNotEmpty())
+  }
+
+  @Test
+  fun `sql autocompleter provides schema aware keyword suggestions for select from where`() {
+    val schema = listOf(
+      com.example.model.TableSchemaDetail(
+        tableName = "clientes",
+        columns = listOf(
+          com.example.model.ColumnInfo(0, "id", "INTEGER", true, null, true),
+          com.example.model.ColumnInfo(1, "nombre", "TEXT", true, null, false),
+          com.example.model.ColumnInfo(2, "email", "TEXT", false, null, false),
+          com.example.model.ColumnInfo(3, "ciudad", "TEXT", false, null, false),
+          com.example.model.ColumnInfo(4, "saldo", "REAL", false, "0.0", false)
+        )
+      ),
+      com.example.model.TableSchemaDetail(
+        tableName = "pedidos",
+        columns = listOf(
+          com.example.model.ColumnInfo(0, "id", "INTEGER", true, null, true),
+          com.example.model.ColumnInfo(1, "cliente_id", "INTEGER", true, null, false),
+          com.example.model.ColumnInfo(2, "total", "REAL", false, null, false)
+        )
+      )
+    )
+    val tables = schema.map { it.tableName }
+    val columns = schema.flatMap { it.columns.map { c -> c.name } }.distinct()
+
+    // 1. Initial / blank text suggests SELECT, INSERT INTO, and schema snippet
+    val initialSuggestions = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "",
+      cursorIndex = 0,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertTrue(initialSuggestions.any { it.insertText.startsWith("SELECT") })
+
+    // 2. Typing 'S' or 'SEL' suggests SELECT and schema snippets
+    val prefixS = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SEL",
+      cursorIndex = 3,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertTrue(prefixS.any { it.displayText == "SELECT" })
+
+    // 3. Right after "SELECT " suggests schema columns and FROM
+    val selectContext = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SELECT ",
+      cursorIndex = 7,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertTrue(selectContext.any { it.insertText.contains("FROM") })
+    assertTrue(selectContext.any { it.displayText == "id" || it.displayText == "nombre" })
+
+    // 4. Right after "SELECT * FROM " suggests schema tables
+    val fromContext = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SELECT * FROM ",
+      cursorIndex = 14,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertTrue(fromContext.any { it.displayText == "clientes" })
+    assertTrue(fromContext.any { it.displayText == "pedidos" })
+
+    // 5. Typing 'w' or after "FROM clientes " suggests WHERE
+    val afterTableContext = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SELECT * FROM clientes ",
+      cursorIndex = 23,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertTrue(afterTableContext.any { it.displayText == "WHERE" })
+
+    // 6. Right after "WHERE " suggests columns of 'clientes'
+    val whereContext = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SELECT * FROM clientes WHERE ",
+      cursorIndex = 29,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertTrue(whereContext.any { it.displayText == "saldo" || it.displayText == "ciudad" })
+  }
+
+  @Test
+  fun `sql syntax visual transformation highlights schema tables and schema columns`() {
+    val schemaTables = setOf("clientes", "pedidos")
+    val schemaColumns = setOf("id", "nombre", "saldo")
+    val visualTransformation = com.example.ui.components.SqlSyntaxVisualTransformation(
+      isDark = true,
+      schemaTables = schemaTables,
+      schemaColumns = schemaColumns
+    )
+    val input = androidx.compose.ui.text.AnnotatedString(
+      "SELECT id, nombre FROM clientes WHERE saldo > 50;"
+    )
+    val transformed = visualTransformation.filter(input)
+    val spanStyles = transformed.text.spanStyles
+
+    // Find style covering 'clientes' (index 23 to 31)
+    val clientesStart = input.text.indexOf("clientes")
+    val clientesSpan = spanStyles.find { it.start == clientesStart && it.end == clientesStart + "clientes".length }
+    org.junit.Assert.assertNotNull("Table 'clientes' should be highlighted", clientesSpan)
+    assertEquals(androidx.compose.ui.graphics.Color(0xFF2DD4BF), clientesSpan?.item?.color)
+
+    // Find style covering 'saldo'
+    val saldoStart = input.text.indexOf("saldo")
+    val saldoSpan = spanStyles.find { it.start == saldoStart && it.end == saldoStart + "saldo".length }
+    org.junit.Assert.assertNotNull("Column 'saldo' should be highlighted", saldoSpan)
+    assertEquals(androidx.compose.ui.graphics.Color(0xFF38BDF8), saldoSpan?.item?.color)
+  }
+
+  @Test
+  fun `database manager creates projects template and lists table summaries`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val dbManager = DatabaseManager(context)
+
+    // 1. Create project with 'projects' template
+    val created = dbManager.createNewDatabase("test_proyectos_hub", "projects")
+    assertTrue(created)
+
+    // 2. Query summaries
+    val tables = dbManager.getDatabaseTableSummaries("test_proyectos_hub")
+    assertTrue(tables.isNotEmpty())
+    val tableNames = tables.map { it.name }
+    assertTrue(tableNames.contains("proyectos"))
+    assertTrue(tableNames.contains("miembros"))
+    assertTrue(tableNames.contains("tareas"))
+
+    // 3. Insert row test in table
+    val inserted = dbManager.insertTableRow(
+      "proyectos",
+      mapOf(
+        "nombre" to "MiniSQL 2.0 Pro",
+        "descripcion" to "Proyectos hub y tabla pro",
+        "presupuesto" to "5000.0",
+        "estado" to "Activo"
+      )
+    )
+    assertTrue(inserted)
+
+    val res = dbManager.executeSql("SELECT * FROM proyectos WHERE nombre = 'MiniSQL 2.0 Pro';")
+    assertTrue(res.isSuccess)
+    assertEquals(1, res.rows.size)
   }
 }
