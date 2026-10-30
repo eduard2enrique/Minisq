@@ -90,8 +90,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -602,22 +601,21 @@ fun NewTableDesignerDialog(
 
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.72f))
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .navigationBarsPadding()
+                .background(Color.Black.copy(alpha = 0.65f))
+                .safeDrawingPadding()
                 .imePadding()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(),
+                    .fillMaxHeight(0.95f),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
@@ -1095,18 +1093,21 @@ fun NewTableDesignerDialog(
 
                     // Pinned Bottom Actions
                     Surface(
-                        tonalElevation = 4.dp,
+                        tonalElevation = 6.dp,
+                        shadowElevation = 6.dp,
+                        color = MaterialTheme.colorScheme.surface,
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedButton(
                                 onClick = onDismiss,
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).height(46.dp),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Text("Cancelar")
@@ -1119,12 +1120,12 @@ fun NewTableDesignerDialog(
                                     }
                                 },
                                 enabled = tableName.isNotBlank() && columns.any { it.name.isNotBlank() },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f).height(46.dp),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Crear Tabla")
+                                Text("Crear Tabla", fontWeight = FontWeight.Bold)
                             }
                         }
                     }

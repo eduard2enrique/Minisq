@@ -5,6 +5,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.example.data.DatabaseManager
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -128,6 +129,28 @@ class ExampleRobolectricTest {
     // 5. Valid query has no error issues
     val cleanIssues = com.example.data.SqlSyntaxValidator.validate("SELECT id, nombre FROM clientes WHERE id > 0 ORDER BY id DESC;")
     assertTrue(cleanIssues.none { it.severity == com.example.data.IssueSeverity.ERROR })
+
+    // 6. Valid multiline JOIN with alias and ON condition does not produce warning
+    val joinIssues = com.example.data.SqlSyntaxValidator.validate(
+        """
+        SELECT p.id, c.nombre, p.fecha, p.total
+        FROM pedidos p
+        INNER JOIN clientes c ON p.cliente_id = c.id
+        ORDER BY p.id DESC;
+        """.trimIndent()
+    )
+    assertTrue(joinIssues.none { it.message.contains("requiere una condición ON") })
+
+    // 7. Invalid JOIN without ON produces warning with line number
+    val invalidJoinIssues = com.example.data.SqlSyntaxValidator.validate(
+        """
+        SELECT *
+        FROM pedidos p
+        INNER JOIN clientes
+        ORDER BY p.id DESC;
+        """.trimIndent()
+    )
+    assertTrue(invalidJoinIssues.any { it.message.contains("requiere una condición ON") })
   }
 
   @Test
@@ -392,4 +415,322 @@ class ExampleRobolectricTest {
     assertTrue(res.isSuccess)
     assertEquals(1, res.rows.size)
   }
+
+  @Test
+  fun `spreadsheet importer replaces existing table when createNewTable is true`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val dbManager = DatabaseManager(context)
+    val importer = com.example.data.SpreadsheetImporter(context)
+
+    // 1. Manually create an 'estudiantes' table with old schema (id, nombre, telefono)
+    val createRes = dbManager.executeSql(
+      "CREATE TABLE estudiantes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, telefono TEXT);"
+    )
+    assertTrue(createRes.isSuccess)
+
+    // 2. CSV has different columns: matricula, carrera, promedio
+    val sampleFile = java.io.File(context.cacheDir, "estudiantes_nuevo.csv")
+    sampleFile.writeText("matricula;carrera;promedio\nA001;Ingeniería de Sistemas;18,5\nA002;Administración;16,2\n")
+
+    val uri = android.net.Uri.fromFile(sampleFile)
+    val parsedSheet = importer.parseCsv(uri)
+
+    // Verify semicolon and header detection
+    assertEquals(3, parsedSheet.headers.size)
+    assertEquals("matricula", parsedSheet.headers[0])
+    assertEquals("carrera", parsedSheet.headers[1])
+    assertEquals("promedio", parsedSheet.headers[2])
+
+    val db = dbManager.getActiveDatabase()
+    // 3. Import with createNewTable = true into existing 'estudiantes'
+    val result = importer.importSheetToDatabase(
+      db = db,
+      sheet = parsedSheet,
+      tableName = "estudiantes",
+      headersToUse = parsedSheet.headers,
+      typesToUse = parsedSheet.inferredTypes,
+      createNewTable = true
+    )
+
+    // Should succeed and NOT throw "table estudiantes has no column named matricula"
+    assertTrue("Import should succeed: ${result.message}", result.isSuccess)
+    assertEquals(2, result.rowsImported)
+
+    // Verify new table data and columns
+    val selectRes = dbManager.executeSql("SELECT matricula, carrera, promedio FROM estudiantes;")
+    assertTrue(selectRes.isSuccess)
+    assertEquals(2, selectRes.rows.size)
+    assertEquals("A001", selectRes.rows[0][0])
+    assertEquals("18.5", selectRes.rows[0][2]) // European decimal comma converted to standard decimal point
+  }
+
+  @Test
+  fun `spreadsheet importer preserves spanish accents and handles csv with existing id column`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val dbManager = DatabaseManager(context)
+    val importer = com.example.data.SpreadsheetImporter(context)
+
+    // CSV with Spanish accents in headers and explicit 'id' column
+    val sampleFile = java.io.File(context.cacheDir, "estudiantes_acentos.csv")
+    sampleFile.writeText("id,cédula,año_ingreso,categoría\n1,V-12345678,2022,Regular\n2,V-87654321,2023,Destacado\n")
+
+    val uri = android.net.Uri.fromFile(sampleFile)
+    val parsedSheet = importer.parseCsv(uri)
+
+    assertTrue("Header should preserve accents", parsedSheet.headers.contains("cédula"))
+    assertTrue("Header should preserve ñ", parsedSheet.headers.contains("año_ingreso"))
+    assertTrue("Header should preserve í", parsedSheet.headers.contains("categoría"))
+
+    val db = dbManager.getActiveDatabase()
+    val result = importer.importSheetToDatabase(
+      db = db,
+      sheet = parsedSheet,
+      tableName = "estudiantes_acentos",
+      headersToUse = parsedSheet.headers,
+      typesToUse = parsedSheet.inferredTypes,
+      createNewTable = true
+    )
+
+    assertTrue("Import should succeed without duplicate id column error: ${result.message}", result.isSuccess)
+    assertEquals(2, result.rowsImported)
+
+    val selectRes = dbManager.executeSql("SELECT \"cédula\", \"categoría\" FROM estudiantes_acentos WHERE id = 1;")
+    assertTrue(selectRes.isSuccess)
+    assertEquals("V-12345678", selectRes.rows[0][0])
+  }
+
+  @Test
+  fun `query report helper generates structured report with statistical analysis`() {
+    val sampleResult = com.example.model.SqlExecutionResult(
+      isSuccess = true,
+      message = "Ejecutado con éxito en 4 ms (3 filas devueltas)",
+      columns = listOf("id", "nombre", "salario"),
+      rows = listOf(
+        listOf("1", "Ana Martínez", "2500.50"),
+        listOf("2", "Carlos Gómez", "1800.00"),
+        listOf("3", "David Silva", "3200.75")
+      ),
+      affectedRows = 0,
+      elapsedMs = 4,
+      querySql = "SELECT id, nombre, salario FROM empleados WHERE activo = 1;",
+      isQuery = true
+    )
+
+    val reportData = com.example.data.QueryReportHelper.analyzeAndBuildReport(sampleResult, "empresa_erp")
+
+    assertEquals("empresa_erp", reportData.dbName)
+    assertEquals(3, reportData.totalRows)
+    assertEquals(3, reportData.totalColumns)
+    assertEquals(4, reportData.elapsedMs)
+
+    // Check statistical analysis
+    val salarioStat = reportData.columnStats.find { it.name == "salario" }
+    org.junit.Assert.assertNotNull(salarioStat)
+    assertTrue(salarioStat!!.isNumeric)
+    assertEquals(1800.00, salarioStat.min!!, 0.001)
+    assertEquals(3200.75, salarioStat.max!!, 0.001)
+    assertEquals(7501.25, salarioStat.sum!!, 0.001)
+
+    val nombreStat = reportData.columnStats.find { it.name == "nombre" }
+    org.junit.Assert.assertNotNull(nombreStat)
+    org.junit.Assert.assertFalse(nombreStat!!.isNumeric)
+    assertEquals(3, nombreStat.distinctCount)
+
+    // Check formatted text contains sections
+    val text = reportData.formattedTextReport
+    assertTrue(text.contains("INFORME DE CONSULTA SQL"))
+    assertTrue(text.contains("empresa_erp"))
+    assertTrue(text.contains("SELECT id, nombre, salario FROM empleados"))
+    assertTrue(text.contains("RESUMEN ESTADÍSTICO DE COLUMNAS"))
+    assertTrue(text.contains("Ana Martínez"))
+  }
+
+  @Test
+  fun `creating a blank database starts with exactly 0 tables and allows creating tables`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val dbManager = DatabaseManager(context)
+
+    // Initially sample DB has tables
+    val initialTables = dbManager.getTables()
+    assertTrue(initialTables.isNotEmpty())
+
+    // Create a new blank database
+    val created = dbManager.createNewDatabase("base_prueba_blanco", "empty")
+    assertTrue(created)
+    assertEquals("base_prueba_blanco.db", dbManager.getCurrentDbName())
+
+    // Must have exactly 0 tables
+    val blankTables = dbManager.getTables()
+    assertEquals(0, blankTables.size)
+
+    // Create first table in blank database
+    val createRes = dbManager.executeSql("CREATE TABLE articulos (id INTEGER PRIMARY KEY, titulo TEXT);")
+    assertTrue(createRes.isSuccess)
+
+    // Now has 1 table
+    val updatedTables = dbManager.getTables()
+    assertEquals(1, updatedTables.size)
+    assertEquals("articulos", updatedTables[0].name)
+  }
+
+  @Test
+  fun `sql error analyzer explains unique constraint failure and suggests insert or ignore`() {
+    val err = "UNIQUE constraint failed: clientes.email"
+    val query = "INSERT INTO clientes (nombre, email) VALUES ('Ana', 'ana@ejemplo.com');"
+    val explanation = com.example.ui.components.SqlErrorAnalyzer.analyze(err, query)
+
+    assertTrue(explanation.categoryBadge.contains("UNIQUE"))
+    assertTrue(explanation.reason.contains("clientes"))
+    assertTrue(explanation.reason.contains("email"))
+    assertEquals("Usar 'INSERT OR IGNORE'", explanation.quickFixLabel)
+    assertEquals(
+      "INSERT OR IGNORE INTO clientes (nombre, email) VALUES ('Ana', 'ana@ejemplo.com');",
+      explanation.suggestedFixedQuery
+    )
+  }
+
+  @Test
+  fun `sql error analyzer explains table already exists and suggests if not exists`() {
+    val err = "table \"proveedores\" already exists"
+    val query = "CREATE TABLE proveedores (id INTEGER PRIMARY KEY);"
+    val explanation = com.example.ui.components.SqlErrorAnalyzer.analyze(err, query)
+
+    assertTrue(explanation.categoryBadge.contains("TABLA YA EXISTE"))
+    assertTrue(explanation.reason.contains("proveedores"))
+    assertEquals("Añadir 'IF NOT EXISTS'", explanation.quickFixLabel)
+    assertEquals(
+      "CREATE TABLE IF NOT EXISTS proveedores (id INTEGER PRIMARY KEY);",
+      explanation.suggestedFixedQuery
+    )
+  }
+
+  @Test
+  fun `sql error analyzer explains foreign key and no such table errors`() {
+    val fkErr = "FOREIGN KEY constraint failed"
+    val fkExplanation = com.example.ui.components.SqlErrorAnalyzer.analyze(fkErr, "INSERT INTO pedidos ...")
+    assertTrue(fkExplanation.categoryBadge.contains("FOREIGN KEY"))
+
+    val tableErr = "no such table: inventario_fantasma"
+    val tableExplanation = com.example.ui.components.SqlErrorAnalyzer.analyze(tableErr, "SELECT * FROM inventario_fantasma;")
+    assertTrue(tableExplanation.categoryBadge.contains("TABLA NO ENCONTRADA"))
+    assertTrue(tableExplanation.reason.contains("inventario_fantasma"))
+  }
+
+  @Test
+  fun `database manager resetDatabase restores original state`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val dbManager = DatabaseManager(context)
+
+    // 1. In default sample database (mi_base_de_datos.db), drop a table or add garbage
+    dbManager.switchDatabase("mi_base_de_datos.db")
+    dbManager.executeSql("DROP TABLE IF EXISTS clientes;")
+    val tablesAfterDrop = dbManager.getTables()
+    assertTrue(tablesAfterDrop.none { it.name == "clientes" })
+
+    // Reset default database
+    val resetOk = dbManager.resetDatabase("mi_base_de_datos.db")
+    assertTrue(resetOk)
+
+    // Now 'clientes' must be back!
+    val restoredTables = dbManager.getTables()
+    assertTrue(restoredTables.any { it.name == "clientes" })
+    val clientRows = dbManager.executeSql("SELECT * FROM clientes;")
+    assertTrue(clientRows.isSuccess)
+    assertTrue(clientRows.rows.isNotEmpty())
+
+    // 2. In blank database: after adding tables, reset clears back to 0 tables
+    dbManager.createNewDatabase("temp_blanco", "empty")
+    dbManager.executeSql("CREATE TABLE notas (id INTEGER, texto TEXT);")
+    assertEquals(1, dbManager.getTables().size)
+
+    dbManager.resetDatabase("temp_blanco")
+    assertEquals(0, dbManager.getTables().size)
+  }
+
+  @Test
+  fun `idempotent create table and insert or ignore and replace into succeed repeatedly`() {
+    runBlocking {
+      val context = ApplicationProvider.getApplicationContext<Context>()
+      val dbManager = DatabaseManager(context)
+      dbManager.createNewDatabase("test_idempotent", "empty")
+      dbManager.switchDatabase("test_idempotent")
+
+      val ddl = """
+        CREATE TABLE IF NOT EXISTS cursos_test (
+          id INTEGER PRIMARY KEY,
+          titulo TEXT NOT NULL,
+          codigo TEXT UNIQUE
+        );
+      """.trimIndent()
+
+      // Run DDL first time
+      val res1 = dbManager.executeSql(ddl)
+      assertTrue("DDL first run should succeed: ${res1.message}", res1.isSuccess)
+
+      // Run DDL second time (should NOT fail because IF NOT EXISTS)
+      val res2 = dbManager.executeSql(ddl)
+      assertTrue("DDL repeat run should succeed: ${res2.message}", res2.isSuccess)
+
+      // Run INSERT OR IGNORE
+      val insertIgnore = "INSERT OR IGNORE INTO cursos_test (id, titulo, codigo) VALUES (1, 'SQL 101', 'CS-101');"
+      val insRes1 = dbManager.executeSql(insertIgnore)
+      assertTrue("First insert should succeed: ${insRes1.message}", insRes1.isSuccess)
+
+      // Run INSERT OR IGNORE a second time (should NOT fail because OR IGNORE)
+      val insRes2 = dbManager.executeSql(insertIgnore)
+      assertTrue("Repeat insert or ignore should succeed without error: ${insRes2.message}", insRes2.isSuccess)
+
+      // Verify row count is still 1
+      val queryRows = dbManager.executeSql("SELECT * FROM cursos_test WHERE id = 1;")
+      assertEquals(1, queryRows.rows.size)
+      assertEquals("SQL 101", queryRows.rows[0][1])
+
+      // Run REPLACE INTO (should update the existing row without duplicate error)
+      val replaceSql = "REPLACE INTO cursos_test (id, titulo, codigo) VALUES (1, 'SQL 101 Avanzado', 'CS-101');"
+      val repRes = dbManager.executeSql(replaceSql)
+      assertTrue("Replace into should succeed: ${repRes.message}", repRes.isSuccess)
+
+      val updatedRows = dbManager.executeSql("SELECT * FROM cursos_test WHERE id = 1;")
+      assertEquals(1, updatedRows.rows.size)
+      assertEquals("SQL 101 Avanzado", updatedRows.rows[0][1])
+
+      // Clean up
+      dbManager.deleteDatabase("test_idempotent")
+    }
+  }
+
+  @Test
+  fun `sql script helper counts insert or ignore and replace into statements`() {
+    val script = """
+      CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, nombre TEXT);
+      INSERT INTO items VALUES (1, 'A');
+      INSERT OR IGNORE INTO items VALUES (2, 'B');
+      INSERT OR REPLACE INTO items VALUES (3, 'C');
+      REPLACE INTO items VALUES (4, 'D');
+    """.trimIndent()
+
+    val count = com.example.data.SqlScriptHelper.countInserts(script)
+    assertEquals(4, count)
+  }
+
+  @Test
+  fun `query repository examples contain safe idempotent insertions`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val repo = com.example.data.QueryRepository(context)
+    val examples = repo.getEducationalExamples()
+
+    val insertIgnoreEx = examples.find { it.title.contains("INSERT OR IGNORE") }
+    assertNotNull(insertIgnoreEx)
+    assertTrue(insertIgnoreEx!!.sql.contains("INSERT OR IGNORE INTO"))
+
+    val replaceEx = examples.find { it.title.contains("REPLACE INTO") }
+    assertNotNull(replaceEx)
+    assertTrue(replaceEx!!.sql.contains("REPLACE INTO"))
+
+    val createTableEx = examples.find { it.title.contains("IF NOT EXISTS") }
+    assertNotNull(createTableEx)
+    assertTrue(createTableEx!!.sql.contains("CREATE TABLE IF NOT EXISTS"))
+  }
 }
+
+

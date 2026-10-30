@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.BookmarkBorder
@@ -74,6 +75,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.DatabaseManager
@@ -85,8 +87,10 @@ import com.example.model.SqlExecutionResult
 import com.example.model.TableSummary
 import com.example.ui.components.LoadSqlOptionsDialog
 import com.example.ui.components.QueryHistoryDialog
+import com.example.ui.components.QueryReportDialog
 import com.example.ui.components.SavedQueriesDialog
 import com.example.ui.components.SqlEditor
+import com.example.ui.components.SqlErrorTutorCard
 import com.example.ui.components.SqlExamplesDialog
 import com.example.ui.components.SqlFileInspectionDialog
 import com.example.ui.components.SqlQueryChart
@@ -103,6 +107,7 @@ fun QueryScreen(
     isDark: Boolean = true,
     onExportCsvFile: (SqlExecutionResult) -> Unit,
     onExportJsonFile: (SqlExecutionResult) -> Unit,
+    onExportReportFile: ((String) -> Unit)? = null,
     onOpenHistoryDrawer: () -> Unit = {},
     initialSqlToLoad: String? = null,
     triggerExecute: Boolean = false,
@@ -133,6 +138,7 @@ fun QueryScreen(
     var showSyntaxWarningDialog by remember { mutableStateOf(false) }
     var pendingSyntaxIssues by remember { mutableStateOf<List<com.example.data.SqlSyntaxIssue>>(emptyList()) }
     var showLoadOptionsDialog by remember { mutableStateOf(false) }
+    var showReportDialog by remember { mutableStateOf(false) }
     var loadedSqlFileForInspection by remember { mutableStateOf<LoadedSqlFile?>(null) }
 
     // Launcher for picking .sql or .txt script files from phone storage
@@ -279,13 +285,21 @@ fun QueryScreen(
             "insert" -> "INSERT INTO $targetTable (nombre, email, ciudad, saldo)\nVALUES ('Nuevo Usuario', 'usuario@correo.com', 'Madrid', 150.0);"
             "select" -> "SELECT * FROM $targetTable\nLIMIT 10;"
             "join" -> """
-                SELECT p.id, c.nombre, p.fecha, p.total
+                SELECT
+                    p.id,
+                    c.nombre,
+                    p.fecha,
+                    p.total
                 FROM pedidos p
-                INNER JOIN clientes c ON p.cliente_id = c.id
+                INNER JOIN clientes c
+                    ON p.cliente_id = c.id
                 ORDER BY p.id DESC;
             """.trimIndent()
             "group" -> """
-                SELECT categoria, COUNT(*) as cantidad, AVG(precio) as precio_medio
+                SELECT
+                    categoria,
+                    COUNT(*) AS cantidad,
+                    ROUND(AVG(precio), 2) AS precio_medio
                 FROM productos
                 GROUP BY categoria;
             """.trimIndent()
@@ -655,6 +669,19 @@ fun QueryScreen(
                 }
             }
 
+            if (!result.isSuccess) {
+                SqlErrorTutorCard(
+                    errorMessage = result.message,
+                    currentQuery = sqlQuery.text,
+                    onApplyFix = { fixedSql ->
+                        sqlQuery = TextFieldValue(fixedSql, TextRange(fixedSql.length))
+                        Toast.makeText(context, "Sugerencia aplicada al editor SQL", Toast.LENGTH_SHORT).show()
+                    },
+                    onOpenExamples = { showExamplesDialog = true },
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+            }
+
             // Results visualization (Table or Chart) if query returned rows
             if (result.isSuccess && result.isQuery && result.columns.isNotEmpty()) {
                 Surface(
@@ -673,7 +700,9 @@ fun QueryScreen(
                             text = "Visualización (${result.rows.size} filas)",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
 
                         Row(
@@ -703,7 +732,9 @@ fun QueryScreen(
                                         text = "Tabla",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Medium,
-                                        color = if (resultViewMode == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = if (resultViewMode == 0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -731,7 +762,9 @@ fun QueryScreen(
                                         text = "Gráfico",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Medium,
-                                        color = if (resultViewMode == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = if (resultViewMode == 1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -744,11 +777,13 @@ fun QueryScreen(
                         result = result,
                         onExportCsv = { onExportCsvFile(result) },
                         onExportJson = { onExportJsonFile(result) },
+                        onOpenReport = { showReportDialog = true },
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
                 } else {
                     SqlQueryChart(
                         result = result,
+                        onOpenReport = { showReportDialog = true },
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
                 }
@@ -792,6 +827,18 @@ fun QueryScreen(
                 sqlQuery = TextFieldValue(sql, TextRange(sql.length))
             },
             onDismiss = { showExamplesDialog = false }
+        )
+    }
+
+    if (showReportDialog && executionResult != null) {
+        QueryReportDialog(
+            result = executionResult!!,
+            activeDbName = dbManager.getCurrentDbName(),
+            onDismiss = { showReportDialog = false },
+            onSaveReportFile = { reportText ->
+                onExportReportFile?.invoke(reportText)
+                showReportDialog = false
+            }
         )
     }
 
@@ -869,16 +916,20 @@ fun QueryScreen(
     if (showLoadOptionsDialog) {
         LoadSqlOptionsDialog(
             onPickPhoneFile = {
+                showLoadOptionsDialog = false
                 openSqlDocumentLauncher.launch(arrayOf("*/*"))
             },
             onLoadSampleFile = {
+                showLoadOptionsDialog = false
                 loadSampleSqlDemo()
             },
             onOpenSavedQueries = {
+                showLoadOptionsDialog = false
                 isSavingCurrent = false
                 showSavedDialog = true
             },
             onOpenExamples = {
+                showLoadOptionsDialog = false
                 showExamplesDialog = true
             },
             onDismiss = { showLoadOptionsDialog = false }

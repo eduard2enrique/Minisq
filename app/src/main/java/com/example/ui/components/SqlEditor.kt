@@ -854,11 +854,14 @@ fun formatSqlText(sql: String): String {
     }
 
     // Add clean line breaks before major clauses
-    val clauses = listOf("FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING", "LIMIT", "LEFT JOIN", "INNER JOIN", "JOIN", "VALUES", "SET")
+    val clauses = listOf("FROM", "WHERE", "GROUP BY", "ORDER BY", "HAVING", "LIMIT", "LEFT JOIN", "INNER JOIN", "RIGHT JOIN", "JOIN", "VALUES", "SET")
     for (cl in clauses) {
         val pattern = "\\s+($cl\\b)".toRegex()
         s = pattern.replace(s, "\n$1")
     }
+
+    // Indent ON clause when following a table in a JOIN
+    s = "\\s+(ON\\b)".toRegex().replace(s, "\n    $1")
 
     return s
 }

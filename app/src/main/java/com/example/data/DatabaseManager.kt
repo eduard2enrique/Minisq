@@ -30,6 +30,8 @@ class DatabaseManager(private val context: Context) {
             return dir
         }
 
+    private val prefs = context.getSharedPreferences("minisql_db_templates", Context.MODE_PRIVATE)
+
     private var currentDbName: String = "mi_base_de_datos.db"
     private var activeDatabase: SQLiteDatabase? = null
 
@@ -41,6 +43,7 @@ class DatabaseManager(private val context: Context) {
         val initialFile = File(dbDir, currentDbName)
         if (!initialFile.exists()) {
             createSampleDatabase(currentDbName)
+            prefs.edit().putString("template_$currentDbName", "sample").apply()
         }
     }
 
@@ -84,8 +87,8 @@ class DatabaseManager(private val context: Context) {
     }
 
     fun createNewDatabase(name: String, template: String = "empty"): Boolean {
-        val cleanName = name.trim().replace(Regex("[^a-zA-Z0-9_]"), "_")
-        val dbName = if (cleanName.endsWith(".db")) cleanName else "$cleanName.db"
+        val baseName = name.trim().removeSuffix(".db").removeSuffix(".sqlite").replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val dbName = "$baseName.db"
         val file = File(dbDir, dbName)
         if (file.exists()) return false
 
@@ -101,7 +104,57 @@ class DatabaseManager(private val context: Context) {
                 db.close()
             }
         }
+        prefs.edit().putString("template_$dbName", template).apply()
         switchDatabase(dbName)
+        return true
+    }
+
+    @Synchronized
+    fun resetDatabase(name: String): Boolean {
+        val baseName = name.trim().removeSuffix(".db").removeSuffix(".sqlite").replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val dbName = "$baseName.db"
+        val file = File(dbDir, dbName)
+        val wasActive = (currentDbName == dbName)
+
+        if (wasActive) {
+            try {
+                activeDatabase?.close()
+            } catch (_: Exception) {}
+            activeDatabase = null
+        }
+
+        // Determine template from saved prefs or name heuristics
+        val storedTemplate = prefs.getString("template_$dbName", null)
+        val template = storedTemplate ?: when {
+            dbName.contains("ecommerce", ignoreCase = true) -> "ecommerce"
+            dbName.contains("universidad", ignoreCase = true) || dbName.contains("university", ignoreCase = true) -> "university"
+            dbName.contains("proyecto", ignoreCase = true) || dbName.contains("project", ignoreCase = true) -> "projects"
+            dbName.contains("clinica", ignoreCase = true) || dbName.contains("clinic", ignoreCase = true) -> "clinic"
+            dbName.startsWith("base_", ignoreCase = true) -> "empty"
+            dbName.contains("mi_base_de_datos", ignoreCase = true) -> "sample"
+            else -> "sample"
+        }
+
+        if (file.exists()) {
+            file.delete()
+        }
+
+        when (template) {
+            "ecommerce" -> createSampleEcommerce(file)
+            "university" -> createSampleUniversity(file)
+            "projects" -> createSampleProjects(file)
+            "clinic" -> createSampleClinic(file)
+            "sample" -> createSampleStore(file)
+            else -> {
+                val db = SQLiteDatabase.openOrCreateDatabase(file, null)
+                db.execSQL("PRAGMA foreign_keys = ON;")
+                db.close()
+            }
+        }
+
+        if (wasActive) {
+            switchDatabase(dbName)
+        }
         return true
     }
 
@@ -234,7 +287,7 @@ class DatabaseManager(private val context: Context) {
                 if (upper.startsWith("UPDATE") || upper.startsWith("DELETE")) {
                     val stmt = db.compileStatement(singleSql)
                     affected = stmt.executeUpdateDelete()
-                } else if (upper.startsWith("INSERT")) {
+                } else if (upper.startsWith("INSERT") || upper.startsWith("REPLACE")) {
                     val stmt = db.compileStatement(singleSql)
                     val id = stmt.executeInsert()
                     affected = if (id != -1L) 1 else 0
@@ -248,6 +301,7 @@ class DatabaseManager(private val context: Context) {
                     upper.startsWith("CREATE") -> "Tabla u objeto creado exitosamente en ${elapsedMs} ms."
                     upper.startsWith("DROP") -> "Tabla eliminada exitosamente en ${elapsedMs} ms."
                     upper.startsWith("ALTER") -> "Estructura modificada exitosamente en ${elapsedMs} ms."
+                    upper.startsWith("REPLACE") -> "Registro reemplazado/insertado exitosamente ($affected filas afectadas) en ${elapsedMs} ms."
                     upper.startsWith("INSERT") -> "Registro insertado exitosamente ($affected filas afectadas) en ${elapsedMs} ms."
                     upper.startsWith("UPDATE") -> "$affected registros actualizados en ${elapsedMs} ms."
                     upper.startsWith("DELETE") -> "$affected registros eliminados en ${elapsedMs} ms."
@@ -693,9 +747,12 @@ class DatabaseManager(private val context: Context) {
         for (t in tables) {
             val schema = getTableSchema(t.name)
             if (schema.createSql.isNotBlank()) {
-                sb.append("${schema.createSql};\n")
+                val safeCreate = if (!schema.createSql.contains("IF NOT EXISTS", ignoreCase = true)) {
+                    schema.createSql.replaceFirst(Regex("""(?i)CREATE\s+TABLE\s+"""), "CREATE TABLE IF NOT EXISTS ")
+                } else schema.createSql
+                sb.append("$safeCreate;\n")
             }
-            // Dump rows
+            // Dump rows with INSERT OR IGNORE INTO for idempotent execution
             val cursor = db.rawQuery("SELECT * FROM \"${t.name}\"", null)
             cursor.use { c ->
                 val colCount = c.columnCount
@@ -709,7 +766,7 @@ class DatabaseManager(private val context: Context) {
                             else -> "'${c.getString(i).replace("'", "''")}'"
                         }
                     }
-                    sb.append("INSERT INTO \"${t.name}\" VALUES (${values.joinToString(", ")});\n")
+                    sb.append("INSERT OR IGNORE INTO \"${t.name}\" VALUES (${values.joinToString(", ")});\n")
                 }
             }
             sb.append("\n")
@@ -778,21 +835,21 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
 
-            // Initial records
-            db.execSQL("INSERT INTO clientes (nombre, email, ciudad, saldo) VALUES ('Ana Torres', 'ana@example.com', 'Madrid', 450.50);")
-            db.execSQL("INSERT INTO clientes (nombre, email, ciudad, saldo) VALUES ('Carlos Ruiz', 'carlos@example.com', 'Barcelona', 120.00);")
-            db.execSQL("INSERT INTO clientes (nombre, email, ciudad, saldo) VALUES ('Lucía Méndez', 'lucia@example.com', 'Valencia', 890.25);")
+            // Initial records (idempotent with INSERT OR IGNORE)
+            db.execSQL("INSERT OR IGNORE INTO clientes (nombre, email, ciudad, saldo) VALUES ('Ana Torres', 'ana@example.com', 'Madrid', 450.50);")
+            db.execSQL("INSERT OR IGNORE INTO clientes (nombre, email, ciudad, saldo) VALUES ('Carlos Ruiz', 'carlos@example.com', 'Barcelona', 120.00);")
+            db.execSQL("INSERT OR IGNORE INTO clientes (nombre, email, ciudad, saldo) VALUES ('Lucía Méndez', 'lucia@example.com', 'Valencia', 890.25);")
 
-            db.execSQL("INSERT INTO productos (nombre, categoria, precio, stock) VALUES ('Laptop Pro 15', 'Electrónica', 1199.99, 12);")
-            db.execSQL("INSERT INTO productos (nombre, categoria, precio, stock) VALUES ('Mouse Inalámbrico', 'Accesorios', 24.50, 45);")
-            db.execSQL("INSERT INTO productos (nombre, categoria, precio, stock) VALUES ('Monitor 4K HDR', 'Electrónica', 349.00, 8);")
+            db.execSQL("INSERT OR IGNORE INTO productos (nombre, categoria, precio, stock) VALUES ('Laptop Pro 15', 'Electrónica', 1199.99, 12);")
+            db.execSQL("INSERT OR IGNORE INTO productos (nombre, categoria, precio, stock) VALUES ('Mouse Inalámbrico', 'Accesorios', 24.50, 45);")
+            db.execSQL("INSERT OR IGNORE INTO productos (nombre, categoria, precio, stock) VALUES ('Monitor 4K HDR', 'Electrónica', 349.00, 8);")
 
-            db.execSQL("INSERT INTO pedidos (cliente_id, fecha, estado, total) VALUES (1, '2026-10-18', 'Entregado', 1224.49);")
-            db.execSQL("INSERT INTO pedidos (cliente_id, fecha, estado, total) VALUES (2, '2026-10-21', 'En proceso', 349.00);")
+            db.execSQL("INSERT OR IGNORE INTO pedidos (cliente_id, fecha, estado, total) VALUES (1, '2026-10-18', 'Entregado', 1224.49);")
+            db.execSQL("INSERT OR IGNORE INTO pedidos (cliente_id, fecha, estado, total) VALUES (2, '2026-10-21', 'En proceso', 349.00);")
 
-            db.execSQL("INSERT INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario) VALUES (1, 1, 1, 1199.99);")
-            db.execSQL("INSERT INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario) VALUES (1, 2, 1, 24.50);")
-            db.execSQL("INSERT INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario) VALUES (2, 3, 1, 349.00);")
+            db.execSQL("INSERT OR IGNORE INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario) VALUES (1, 1, 1, 1199.99);")
+            db.execSQL("INSERT OR IGNORE INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario) VALUES (1, 2, 1, 24.50);")
+            db.execSQL("INSERT OR IGNORE INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario) VALUES (2, 3, 1, 349.00);")
         } finally {
             db.close()
         }
@@ -803,7 +860,7 @@ class DatabaseManager(private val context: Context) {
         try {
             db.execSQL("PRAGMA foreign_keys = ON;")
             db.execSQL("""
-                CREATE TABLE usuarios (
+                CREATE TABLE IF NOT EXISTS usuarios (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     usuario TEXT UNIQUE NOT NULL,
                     rol TEXT DEFAULT 'cliente',
@@ -811,13 +868,13 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
             db.execSQL("""
-                CREATE TABLE categorias (
+                CREATE TABLE IF NOT EXISTS categorias (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     nombre TEXT NOT NULL
                 );
             """.trimIndent())
             db.execSQL("""
-                CREATE TABLE articulos (
+                CREATE TABLE IF NOT EXISTS articulos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     categoria_id INTEGER,
                     nombre TEXT NOT NULL,
@@ -826,9 +883,9 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
 
-            db.execSQL("INSERT INTO usuarios (usuario, rol) VALUES ('admin_root', 'administrador'), ('usuario1', 'cliente'), ('invitado', 'cliente');")
-            db.execSQL("INSERT INTO categorias (nombre) VALUES ('Hardware'), ('Software'), ('Servicios');")
-            db.execSQL("INSERT INTO articulos (categoria_id, nombre, precio) VALUES (1, 'Memoria RAM 32GB', 115.0), (1, 'Disco NVMe 1TB', 85.5), (2, 'Licencia IDE Pro', 199.0);")
+            db.execSQL("INSERT OR IGNORE INTO usuarios (usuario, rol) VALUES ('admin_root', 'administrador'), ('usuario1', 'cliente'), ('invitado', 'cliente');")
+            db.execSQL("INSERT OR IGNORE INTO categorias (nombre) VALUES ('Hardware'), ('Software'), ('Servicios');")
+            db.execSQL("INSERT OR IGNORE INTO articulos (categoria_id, nombre, precio) VALUES (1, 'Memoria RAM 32GB', 115.0), (1, 'Disco NVMe 1TB', 85.5), (2, 'Licencia IDE Pro', 199.0);")
         } finally {
             db.close()
         }
@@ -839,14 +896,14 @@ class DatabaseManager(private val context: Context) {
         try {
             db.execSQL("PRAGMA foreign_keys = ON;")
             db.execSQL("""
-                CREATE TABLE profesores (
+                CREATE TABLE IF NOT EXISTS profesores (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     nombre TEXT NOT NULL,
                     departamento TEXT NOT NULL
                 );
             """.trimIndent())
             db.execSQL("""
-                CREATE TABLE cursos (
+                CREATE TABLE IF NOT EXISTS cursos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     titulo TEXT NOT NULL,
                     creditos INTEGER DEFAULT 3,
@@ -855,14 +912,14 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
             db.execSQL("""
-                CREATE TABLE estudiantes (
+                CREATE TABLE IF NOT EXISTS estudiantes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     nombre TEXT NOT NULL,
                     matricula TEXT UNIQUE NOT NULL
                 );
             """.trimIndent())
             db.execSQL("""
-                CREATE TABLE calificaciones (
+                CREATE TABLE IF NOT EXISTS calificaciones (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     estudiante_id INTEGER,
                     curso_id INTEGER,
@@ -872,10 +929,10 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
 
-            db.execSQL("INSERT INTO profesores (nombre, departamento) VALUES ('Dr. Sanamé Durán', 'Bases de Datos'), ('Dra. Elena Ramos', 'Algoritmos');")
-            db.execSQL("INSERT INTO cursos (titulo, creditos, profesor_id) VALUES ('SQL Avanzado', 4, 1), ('Estructura de Datos', 3, 2);")
-            db.execSQL("INSERT INTO estudiantes (nombre, matricula) VALUES ('Marcos Gómez', 'EST-2026-01'), ('Sofía Morales', 'EST-2026-02'), ('David Paz', 'EST-2026-03');")
-            db.execSQL("INSERT INTO calificaciones (estudiante_id, curso_id, nota) VALUES (1, 1, 98.5), (2, 1, 92.0), (3, 2, 88.0);")
+            db.execSQL("INSERT OR IGNORE INTO profesores (nombre, departamento) VALUES ('Dr. Sanamé Durán', 'Bases de Datos'), ('Dra. Elena Ramos', 'Algoritmos');")
+            db.execSQL("INSERT OR IGNORE INTO cursos (titulo, creditos, profesor_id) VALUES ('SQL Avanzado', 4, 1), ('Estructura de Datos', 3, 2);")
+            db.execSQL("INSERT OR IGNORE INTO estudiantes (nombre, matricula) VALUES ('Marcos Gómez', 'EST-2026-01'), ('Sofía Morales', 'EST-2026-02'), ('David Paz', 'EST-2026-03');")
+            db.execSQL("INSERT OR IGNORE INTO calificaciones (estudiante_id, curso_id, nota) VALUES (1, 1, 98.5), (2, 1, 92.0), (3, 2, 88.0);")
         } finally {
             db.close()
         }
@@ -886,7 +943,7 @@ class DatabaseManager(private val context: Context) {
         try {
             db.execSQL("PRAGMA foreign_keys = ON;")
             db.execSQL("""
-                CREATE TABLE proyectos (
+                CREATE TABLE IF NOT EXISTS proyectos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     nombre TEXT NOT NULL,
                     descripcion TEXT,
@@ -895,7 +952,7 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
             db.execSQL("""
-                CREATE TABLE miembros (
+                CREATE TABLE IF NOT EXISTS miembros (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     nombre TEXT NOT NULL,
                     rol TEXT NOT NULL,
@@ -903,7 +960,7 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
             db.execSQL("""
-                CREATE TABLE tareas (
+                CREATE TABLE IF NOT EXISTS tareas (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     proyecto_id INTEGER,
                     miembro_id INTEGER,
@@ -915,9 +972,9 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
 
-            db.execSQL("INSERT INTO proyectos (nombre, descripcion, presupuesto, estado) VALUES ('App Móvil MiniSQL', 'Desarrollo de editor SQLite para Android', 12500.0, 'En progreso'), ('Portal Web Clientes', 'Panel de administración en la nube', 8400.0, 'Planificación');")
-            db.execSQL("INSERT INTO miembros (nombre, rol, email) VALUES ('Eduardo Sanamé', 'Líder Técnico', 'eduardo@ejemplo.com'), ('Ana Gómez', 'Diseñadora UI/UX', 'ana@ejemplo.com'), ('Carlos Vera', 'Desarrollador Backend', 'carlos@ejemplo.com');")
-            db.execSQL("INSERT INTO tareas (proyecto_id, miembro_id, titulo, prioridad, completada) VALUES (1, 1, 'Implementar resaltado sintáctico', 'Alta', 1), (1, 2, 'Diseño de interfaz de tablas y proyectos', 'Alta', 1), (1, 3, 'Optimizar consultas SQLite', 'Media', 0), (2, 1, 'Arquitectura de base de datos', 'Alta', 0);")
+            db.execSQL("INSERT OR IGNORE INTO proyectos (nombre, descripcion, presupuesto, estado) VALUES ('App Móvil MiniSQL', 'Desarrollo de editor SQLite para Android', 12500.0, 'En progreso'), ('Portal Web Clientes', 'Panel de administración en la nube', 8400.0, 'Planificación');")
+            db.execSQL("INSERT OR IGNORE INTO miembros (nombre, rol, email) VALUES ('Eduardo Sanamé', 'Líder Técnico', 'eduardo@ejemplo.com'), ('Ana Gómez', 'Diseñadora UI/UX', 'ana@ejemplo.com'), ('Carlos Vera', 'Desarrollador Backend', 'carlos@ejemplo.com');")
+            db.execSQL("INSERT OR IGNORE INTO tareas (proyecto_id, miembro_id, titulo, prioridad, completada) VALUES (1, 1, 'Implementar resaltado sintáctico', 'Alta', 1), (1, 2, 'Diseño de interfaz de tablas y proyectos', 'Alta', 1), (1, 3, 'Optimizar consultas SQLite', 'Media', 0), (2, 1, 'Arquitectura de base de datos', 'Alta', 0);")
         } finally {
             db.close()
         }
@@ -928,7 +985,7 @@ class DatabaseManager(private val context: Context) {
         try {
             db.execSQL("PRAGMA foreign_keys = ON;")
             db.execSQL("""
-                CREATE TABLE medicos (
+                CREATE TABLE IF NOT EXISTS medicos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     nombre TEXT NOT NULL,
                     especialidad TEXT NOT NULL,
@@ -936,7 +993,7 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
             db.execSQL("""
-                CREATE TABLE pacientes (
+                CREATE TABLE IF NOT EXISTS pacientes (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     nombre TEXT NOT NULL,
                     edad INTEGER,
@@ -945,7 +1002,7 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
             db.execSQL("""
-                CREATE TABLE citas (
+                CREATE TABLE IF NOT EXISTS citas (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     paciente_id INTEGER,
                     medico_id INTEGER,
@@ -957,9 +1014,9 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
 
-            db.execSQL("INSERT INTO medicos (nombre, especialidad, telefono) VALUES ('Dr. Roberto Blanco', 'Cardiología', '+34 600 123 456'), ('Dra. Laura Díaz', 'Pediatría', '+34 600 987 654');")
-            db.execSQL("INSERT INTO pacientes (nombre, edad, ciudad, grupo_sanguineo) VALUES ('Marta Silva', 34, 'Madrid', 'O+'), ('Pedro Morales', 62, 'Barcelona', 'A+'), ('Elena Rios', 19, 'Valencia', 'B-');")
-            db.execSQL("INSERT INTO citas (paciente_id, medico_id, fecha, motivo, costo) VALUES (1, 1, '2026-10-28', 'Chequeo preventivo', 75.0), (2, 1, 'Seguimiento presión arterial', 60.0), (3, 2, 'Consulta general', 50.0);")
+            db.execSQL("INSERT OR IGNORE INTO medicos (nombre, especialidad, telefono) VALUES ('Dr. Roberto Blanco', 'Cardiología', '+34 600 123 456'), ('Dra. Laura Díaz', 'Pediatría', '+34 600 987 654');")
+            db.execSQL("INSERT OR IGNORE INTO pacientes (nombre, edad, ciudad, grupo_sanguineo) VALUES ('Marta Silva', 34, 'Madrid', 'O+'), ('Pedro Morales', 62, 'Barcelona', 'A+'), ('Elena Rios', 19, 'Valencia', 'B-');")
+            db.execSQL("INSERT OR IGNORE INTO citas (paciente_id, medico_id, fecha, motivo, costo) VALUES (1, 1, '2026-10-28', 'Chequeo preventivo', 75.0), (2, 1, 'Seguimiento presión arterial', 60.0), (3, 2, 'Consulta general', 50.0);")
         } finally {
             db.close()
         }

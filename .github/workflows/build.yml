@@ -23,7 +23,6 @@ jobs:
     - name: Permisos de ejecución a gradlew
       run: chmod +x gradlew || true
 
-    # Genera el debug.keystore necesario para firmar el APK
     - name: Generar Keystore de Depuración
       run: |
         keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"

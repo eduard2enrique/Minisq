@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -83,6 +84,7 @@ import com.example.data.QueryRepository
 import com.example.model.SqlExecutionResult
 import com.example.model.TableSummary
 import com.example.ui.components.DatabaseSelectorDialog
+import com.example.ui.components.NewDatabaseDialog
 import com.example.ui.components.ProjectsHubDialog
 import androidx.compose.material.icons.outlined.FolderOpen
 import com.example.ui.components.HistorySideDrawer
@@ -105,6 +107,7 @@ fun MainScreen(
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Consulta, 1: Diseñar, 2: Importar, 3: Tablas
     var showDbSelectorDialog by remember { mutableStateOf(false) }
+    var showNewDbDialog by remember { mutableStateOf(false) }
 
     var currentDbName by remember { mutableStateOf(dbManager.getCurrentDbName()) }
     var dbList by remember { mutableStateOf(dbManager.listDatabases()) }
@@ -134,6 +137,7 @@ fun MainScreen(
     // CSV and JSON export helpers
     var pendingExportCsvData by remember { mutableStateOf<String?>(null) }
     var pendingExportJsonData by remember { mutableStateOf<String?>(null) }
+    var pendingExportReportData by remember { mutableStateOf<String?>(null) }
 
     val createCsvLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/csv")
@@ -159,6 +163,20 @@ fun MainScreen(
                 }
                 Toast.makeText(context, "Archivo JSON guardado.", Toast.LENGTH_SHORT).show()
                 pendingExportJsonData = null
+            }
+        }
+    }
+
+    val createReportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri: Uri? ->
+        if (uri != null && pendingExportReportData != null) {
+            scope.launch {
+                context.contentResolver.openOutputStream(uri)?.use { stream ->
+                    stream.write(pendingExportReportData!!.toByteArray(Charsets.UTF_8))
+                }
+                Toast.makeText(context, "Informe guardado correctamente.", Toast.LENGTH_SHORT).show()
+                pendingExportReportData = null
             }
         }
     }
@@ -247,33 +265,32 @@ fun MainScreen(
                         // MiniSQL App Badge in smooth iOS squircle
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
-                                .clip(RoundedCornerShape(11.dp))
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(9.dp))
                                 .background(SqlBlue),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = "PRO",
-                                style = MaterialTheme.typography.labelMedium,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                 fontWeight = FontWeight.Black,
                                 color = androidx.compose.ui.graphics.Color.White
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
 
                         Column {
                             Text(
                                 text = "MiniSQL Pro 1.0",
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
                                 fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.onBackground,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                maxLines = 1
                             )
                             Text(
                                 text = "SQLite Studio",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -331,7 +348,7 @@ fun MainScreen(
                         }
 
                         Button(
-                            onClick = { showDbSelectorDialog = true },
+                            onClick = { showNewDbDialog = true },
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary,
@@ -340,16 +357,16 @@ fun MainScreen(
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 2.dp),
                             modifier = Modifier
                                 .height(34.dp)
-                                .testTag("projects_button")
+                                .testTag("new_db_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Outlined.FolderOpen,
+                                imageVector = Icons.Outlined.Add,
                                 contentDescription = null,
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Proyectos",
+                                text = "Nueva BD",
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
@@ -401,7 +418,7 @@ fun MainScreen(
 
                             Spacer(modifier = Modifier.width(12.dp))
 
-                            Column {
+                            Column(modifier = Modifier.weight(1f, fill = false).padding(end = 6.dp)) {
                                 Text(
                                     text = "BASE ACTIVA",
                                     style = MaterialTheme.typography.labelSmall.copy(
@@ -411,14 +428,22 @@ fun MainScreen(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
                                 )
+                                val displayName = currentDbName.removeSuffix(".db")
+                                val dynamicFontSize = when {
+                                    displayName.length > 22 -> 11.5.sp
+                                    displayName.length > 16 -> 13.sp
+                                    else -> 15.sp
+                                }
                                 Text(
-                                    text = currentDbName.removeSuffix(".db"),
+                                    text = displayName,
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontFamily = FontFamily.Monospace,
-                                        fontSize = 15.sp
+                                        fontSize = dynamicFontSize
                                     ),
                                     fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -522,6 +547,10 @@ fun MainScreen(
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
+                    BackHandler(enabled = selectedTab != 0) {
+                        selectedTab = 0
+                    }
+
                     when (selectedTab) {
                         0 -> QueryScreen(
                             dbManager = dbManager,
@@ -543,6 +572,10 @@ fun MainScreen(
                                     createJsonLauncher.launch("consulta_resultado_${System.currentTimeMillis()}.json")
                                 }
                             },
+                            onExportReportFile = { reportText ->
+                                pendingExportReportData = reportText
+                                createReportLauncher.launch("informe_consulta_${System.currentTimeMillis()}.txt")
+                            },
                             onOpenHistoryDrawer = {
                                 scope.launch { drawerState.open() }
                             },
@@ -559,17 +592,71 @@ fun MainScreen(
                         )
                         2 -> ImportExportScreen(
                             dbManager = dbManager,
-                            onDatabaseChanged = { refreshDatabaseState() }
+                            onDatabaseChanged = { refreshDatabaseState() },
+                            onNavigateToTables = { selectedTab = 3 },
+                            onNavigateToQuery = { sql ->
+                                selectedTab = 0
+                                if (sql != null) {
+                                    externalSelectedSql = sql
+                                    externalTriggerExecute = false
+                                }
+                            }
                         )
                         3 -> TablesScreen(
                             dbManager = dbManager,
                             tables = tablesList,
-                            onRefreshTables = { refreshDatabaseState() }
+                            onRefreshTables = { refreshDatabaseState() },
+                            activeDbName = currentDbName,
+                            onNavigateToDesigner = { selectedTab = 1 },
+                            onNavigateToImport = { selectedTab = 2 },
+                            onNavigateToSql = { starterSql ->
+                                selectedTab = 0
+                                externalSelectedSql = starterSql
+                                externalTriggerExecute = false
+                            },
+                            onResetCurrentDb = {
+                                val ok = dbManager.resetDatabase(currentDbName)
+                                if (ok) {
+                                    refreshDatabaseState()
+                                    Toast.makeText(context, "Base '$currentDbName' restablecida a su estado original.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         )
                     }
                 }
             }
         }
+    }
+
+    // Modal: Quick New Database Dialog
+    if (showNewDbDialog) {
+        NewDatabaseDialog(
+            existingDatabases = dbList,
+            onCreateBlank = { name ->
+                val ok = dbManager.createNewDatabase(name, "empty")
+                if (ok) {
+                    refreshDatabaseState()
+                    selectedTab = 1 // Immediately open table designer as requested by user!
+                    Toast.makeText(context, "Base '$name' creada. ¡Diseña tu primera tabla!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Ya existe una base de datos con ese nombre.", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onCreateWithTemplate = { name, templateId ->
+                val ok = dbManager.createNewDatabase(name, templateId)
+                if (ok) {
+                    refreshDatabaseState()
+                    selectedTab = 3 // View tables
+                    Toast.makeText(context, "Base '$name' creada con plantilla.", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Ya existe una base de datos con ese nombre.", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onOpenProjectsHub = {
+                showDbSelectorDialog = true
+            },
+            onDismiss = { showNewDbDialog = false }
+        )
     }
 
     // Modal: Projects Hub & Database Manager Dialog
@@ -581,13 +668,16 @@ fun MainScreen(
             onSelectDb = { name ->
                 dbManager.switchDatabase(name)
                 refreshDatabaseState()
-                Toast.makeText(context, "Proyecto activo: $name", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Base activa: $name", Toast.LENGTH_SHORT).show()
             },
             onCreateDb = { name, template ->
                 val ok = dbManager.createNewDatabase(name, template)
                 if (ok) {
                     refreshDatabaseState()
-                    Toast.makeText(context, "Proyecto '$name' creado con plantilla.", Toast.LENGTH_SHORT).show()
+                    if (template == "empty") {
+                        selectedTab = 1 // Open designer for blank DB
+                    }
+                    Toast.makeText(context, "Proyecto '$name' creado.", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(context, "Ya existe un proyecto con ese nombre.", Toast.LENGTH_SHORT).show()
                 }
@@ -604,6 +694,13 @@ fun MainScreen(
                 if (ok) {
                     refreshDatabaseState()
                     Toast.makeText(context, "Proyecto renombrado.", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onResetDb = { name ->
+                val ok = dbManager.resetDatabase(name)
+                if (ok) {
+                    refreshDatabaseState()
+                    Toast.makeText(context, "Base '$name' restablecida a su estado original.", Toast.LENGTH_SHORT).show()
                 }
             },
             onDismiss = { showDbSelectorDialog = false }

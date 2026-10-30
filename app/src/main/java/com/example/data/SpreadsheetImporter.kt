@@ -10,6 +10,7 @@ import org.xmlpull.v1.XmlPullParser
 import java.io.BufferedReader
 import java.io.InputStream
 import java.io.InputStreamReader
+import java.nio.charset.Charset
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
@@ -54,30 +55,33 @@ class SpreadsheetImporter(private val context: Context) {
     }
 
     fun parseCsv(uri: Uri): ParsedSheet {
-        val inputStream = context.contentResolver.openInputStream(uri)
+        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
             ?: throw Exception("No se pudo abrir el archivo.")
 
-        val lines = mutableListOf<String>()
-        BufferedReader(InputStreamReader(inputStream, Charsets.UTF_8)).use { reader ->
-            var count = 0
-            while (count < 5000) { // Limit to 5000 rows for mobile safety
-                val line = reader.readLine() ?: break
-                if (line.isNotBlank()) {
-                    // Strip BOM if present on first line
-                    val cleanLine = if (count == 0 && line.startsWith("\uFEFF")) line.substring(1) else line
-                    lines.add(cleanLine)
-                    count++
-                }
-            }
-        }
-
-        if (lines.isEmpty()) {
+        if (bytes.isEmpty()) {
             throw Exception("El archivo CSV está vacío.")
         }
 
+        // Try decoding as UTF-8; if it contains replacement char '\uFFFD', fallback to ISO-8859-1 (standard Spanish Windows Excel)
+        var content = String(bytes, Charsets.UTF_8)
+        if (content.contains('\uFFFD')) {
+            val isoCandidate = String(bytes, Charset.forName("ISO-8859-1"))
+            if (!isoCandidate.contains('\uFFFD')) {
+                content = isoCandidate
+            }
+        }
+
+        // Strip UTF-8 BOM if present
+        content = content.removePrefix("\uFEFF").replace("\uFEFF", "")
+
+        val allLines = content.lines().filter { it.isNotBlank() }.take(5000)
+        if (allLines.isEmpty()) {
+            throw Exception("El archivo CSV no contiene filas de datos.")
+        }
+
         // Auto-detect delimiter from first 5 lines
-        val delimiter = detectDelimiter(lines.take(5))
-        val parsedRows = lines.map { parseCsvLine(it, delimiter) }
+        val delimiter = detectDelimiter(allLines.take(5))
+        val parsedRows = allLines.map { parseCsvLine(it, delimiter) }
         val rawHeaders = parsedRows.firstOrNull() ?: emptyList()
         val dataRows = if (parsedRows.size > 1) parsedRows.subList(1, parsedRows.size) else emptyList()
 
@@ -101,7 +105,7 @@ class SpreadsheetImporter(private val context: Context) {
         var maxCount = -1
 
         for (c in candidates) {
-            val counts = sampleLines.map { line -> line.count { it == c } }
+            val counts = sampleLines.map { line -> countCharOutsideQuotes(line, c) }
             val first = counts.firstOrNull() ?: 0
             if (first > 0 && counts.all { it == first || (it > 0 && Math.abs(it - first) <= 2) }) {
                 if (first > maxCount) {
@@ -111,6 +115,16 @@ class SpreadsheetImporter(private val context: Context) {
             }
         }
         return bestChar
+    }
+
+    private fun countCharOutsideQuotes(line: String, target: Char): Int {
+        var count = 0
+        var inQuotes = false
+        for (ch in line) {
+            if (ch == '\"') inQuotes = !inQuotes
+            else if (ch == target && !inQuotes) count++
+        }
+        return count
     }
 
     private fun parseCsvLine(line: String, delimiter: Char): List<String> {
@@ -129,15 +143,23 @@ class SpreadsheetImporter(private val context: Context) {
                     inQuotes = !inQuotes
                 }
             } else if (ch == delimiter && !inQuotes) {
-                tokens.add(sb.toString().trim())
+                tokens.add(cleanCsvToken(sb.toString()))
                 sb.clear()
             } else {
                 sb.append(ch)
             }
             i++
         }
-        tokens.add(sb.toString().trim())
+        tokens.add(cleanCsvToken(sb.toString()))
         return tokens
+    }
+
+    private fun cleanCsvToken(raw: String): String {
+        var s = raw.trim()
+        if (s.startsWith("\"") && s.endsWith("\"") && s.length >= 2) {
+            s = s.substring(1, s.length - 1).trim()
+        }
+        return s
     }
 
     private fun parseXlsx(uri: Uri): List<ParsedSheet> {
@@ -316,8 +338,15 @@ class SpreadsheetImporter(private val context: Context) {
         val seen = mutableSetOf<String>()
         return rawHeaders.mapIndexed { idx, raw ->
             val clean = raw.trim()
-                .replace(Regex("[^a-zA-Z0-9_]"), "_")
+                .replace("\uFEFF", "")
+                .replace("\u200B", "")
+                .replace("\"", "")
+                .replace("'", "")
+                .replace(Regex("[^\\p{L}0-9_]"), "_")
+                .replace(Regex("_+"), "_")
+                .trim('_')
                 .ifEmpty { "col_${idx + 1}" }
+
             var unique = clean
             var counter = 1
             while (seen.contains(unique.lowercase())) {
@@ -331,7 +360,12 @@ class SpreadsheetImporter(private val context: Context) {
 
     private fun sanitizeTableName(raw: String): String {
         val clean = raw.trim()
-            .replace(Regex("[^a-zA-Z0-9_]"), "_")
+            .replace("\uFEFF", "")
+            .replace("\u200B", "")
+            .replace("\"", "")
+            .replace("'", "")
+            .replace(Regex("[^\\p{L}0-9_]"), "_")
+            .replace(Regex("_+"), "_")
             .trim('_')
             .ifEmpty { "datos_importados" }
         return clean
@@ -348,10 +382,13 @@ class SpreadsheetImporter(private val context: Context) {
                 val value = row.getOrNull(col)?.trim() ?: ""
                 if (value.isNotEmpty() && !value.equals("NULL", ignoreCase = true)) {
                     nonNullCount++
+                    // Check integer
                     if (canBeInt && !value.matches(Regex("^-?\\d+$"))) {
                         canBeInt = false
                     }
-                    if (canBeReal && !value.matches(Regex("^-?\\d+(\\.\\d+)?$"))) {
+                    // Check real / float (supporting both dot and European comma: 12.50 or 12,50)
+                    val normalizedNum = value.replace(",", ".")
+                    if (canBeReal && !normalizedNum.matches(Regex("^-?\\d+(\\.\\d+)?$"))) {
                         canBeReal = false
                     }
                 }
@@ -380,44 +417,90 @@ class SpreadsheetImporter(private val context: Context) {
             db.beginTransaction()
 
             if (createNewTable) {
-                // Drop if exists or create
+                // DROP TABLE IF EXISTS so that old schema from previous designs is completely replaced
+                db.execSQL("DROP TABLE IF EXISTS \"$cleanTableName\";")
+
+                val hasIdColumn = headersToUse.any { it.equals("id", ignoreCase = true) }
                 val colDefs = headersToUse.mapIndexed { idx, col ->
                     val type = typesToUse.getOrNull(idx) ?: "TEXT"
-                    "\"$col\" $type"
+                    if (col.equals("id", ignoreCase = true)) {
+                        "\"$col\" INTEGER PRIMARY KEY"
+                    } else {
+                        "\"$col\" $type"
+                    }
                 }
 
+                val primaryKeyPrefix = if (!hasIdColumn) "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n" else ""
                 val createSql = "CREATE TABLE IF NOT EXISTS \"$cleanTableName\" (\n" +
-                        "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n" +
+                        primaryKeyPrefix +
                         "    " + colDefs.joinToString(",\n    ") + "\n);"
                 db.execSQL(createSql)
+            } else {
+                // Appending to existing table: inspect existing table columns
+                val existingCols = mutableSetOf<String>()
+                val cursor = db.rawQuery("PRAGMA table_info(\"$cleanTableName\")", null)
+                cursor.use { c ->
+                    val nameIdx = c.getColumnIndex("name")
+                    while (c.moveToNext()) {
+                        if (nameIdx != -1) existingCols.add(c.getString(nameIdx).lowercase())
+                    }
+                }
+
+                if (existingCols.isEmpty()) {
+                    // Table did not actually exist, create it
+                    val hasIdColumn = headersToUse.any { it.equals("id", ignoreCase = true) }
+                    val colDefs = headersToUse.mapIndexed { idx, col ->
+                        val type = typesToUse.getOrNull(idx) ?: "TEXT"
+                        if (col.equals("id", ignoreCase = true)) "\"$col\" INTEGER PRIMARY KEY" else "\"$col\" $type"
+                    }
+                    val primaryKeyPrefix = if (!hasIdColumn) "    id INTEGER PRIMARY KEY AUTOINCREMENT,\n" else ""
+                    val createSql = "CREATE TABLE IF NOT EXISTS \"$cleanTableName\" (\n" +
+                            primaryKeyPrefix +
+                            "    " + colDefs.joinToString(",\n    ") + "\n);"
+                    db.execSQL(createSql)
+                } else {
+                    // Add any missing columns from CSV via ALTER TABLE
+                    for (i in headersToUse.indices) {
+                        val colName = headersToUse[i]
+                        if (!existingCols.contains(colName.lowercase())) {
+                            val colType = typesToUse.getOrNull(i) ?: "TEXT"
+                            try {
+                                db.execSQL("ALTER TABLE \"$cleanTableName\" ADD COLUMN \"$colName\" $colType;")
+                                existingCols.add(colName.lowercase())
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
             }
 
             val insertCols = headersToUse.joinToString(", ") { "\"$it\"" }
             val placeholders = headersToUse.joinToString(", ") { "?" }
-            val insertSql = "INSERT INTO \"$cleanTableName\" ($insertCols) VALUES ($placeholders);"
+            val insertSql = "INSERT OR IGNORE INTO \"$cleanTableName\" ($insertCols) VALUES ($placeholders);"
             val stmt = db.compileStatement(insertSql)
 
             var insertedCount = 0
             for (row in sheet.rows) {
                 stmt.clearBindings()
                 for (i in headersToUse.indices) {
-                    val cellVal = row.getOrNull(i)?.trim() ?: ""
-                    if (cellVal.isEmpty() || cellVal.equals("NULL", ignoreCase = true)) {
+                    val rawVal = row.getOrNull(i)?.trim() ?: ""
+                    if (rawVal.isEmpty() || rawVal.equals("NULL", ignoreCase = true)) {
                         stmt.bindNull(i + 1)
                     } else {
                         val type = typesToUse.getOrNull(i) ?: "TEXT"
                         when (type) {
                             "INTEGER" -> {
-                                val longVal = cellVal.toLongOrNull()
+                                val cleanNum = rawVal.replace(".", "").replace(",", "").trim()
+                                val longVal = rawVal.toLongOrNull() ?: cleanNum.toLongOrNull()
                                 if (longVal != null) stmt.bindLong(i + 1, longVal)
-                                else stmt.bindString(i + 1, cellVal)
+                                else stmt.bindString(i + 1, rawVal)
                             }
                             "REAL" -> {
-                                val dblVal = cellVal.toDoubleOrNull()
+                                val normalizedVal = rawVal.replace(",", ".")
+                                val dblVal = rawVal.toDoubleOrNull() ?: normalizedVal.toDoubleOrNull()
                                 if (dblVal != null) stmt.bindDouble(i + 1, dblVal)
-                                else stmt.bindString(i + 1, cellVal)
+                                else stmt.bindString(i + 1, rawVal)
                             }
-                            else -> stmt.bindString(i + 1, cellVal)
+                            else -> stmt.bindString(i + 1, rawVal)
                         }
                     }
                 }

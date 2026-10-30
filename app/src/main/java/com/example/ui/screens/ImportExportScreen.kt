@@ -22,25 +22,34 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.BackHandler
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.LocalHospital
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.TaskAlt
+import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -70,8 +79,13 @@ import java.io.FileOutputStream
 fun ImportExportScreen(
     dbManager: DatabaseManager,
     onDatabaseChanged: () -> Unit,
+    onNavigateToTables: () -> Unit = {},
+    onNavigateToQuery: (String?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    BackHandler {
+        onNavigateToTables()
+    }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val spreadsheetImporter = remember { SpreadsheetImporter(context) }
@@ -153,6 +167,7 @@ fun ImportExportScreen(
                 if (res.isSuccess) {
                     Toast.makeText(context, "Base de datos '${res.getOrNull()}' importada con éxito.", Toast.LENGTH_LONG).show()
                     onDatabaseChanged()
+                    onNavigateToTables()
                 } else {
                     Toast.makeText(context, "Error: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
                 }
@@ -249,6 +264,55 @@ fun ImportExportScreen(
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // Top Header with Active DB and Quick Close / Dismiss Action
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.UploadFile,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Importar y Exportar",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Base activa: ${dbManager.getCurrentDbName().removeSuffix(".db")}",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            IconButton(
+                onClick = onNavigateToTables,
+                modifier = Modifier.size(36.dp).testTag("close_import_screen_btn")
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = "Cerrar menú importar",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         // Section 1: CSV and Excel (.xlsx) Import Card (NEW)
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -467,7 +531,7 @@ fun ImportExportScreen(
                     onValueChange = { sqlScriptInput = it },
                     placeholder = {
                         Text(
-                            "CREATE TABLE notas (id INTEGER PRIMARY KEY, texto TEXT);\nINSERT INTO notas (texto) VALUES ('Nota 1');",
+                            "CREATE TABLE IF NOT EXISTS notas (id INTEGER PRIMARY KEY, texto TEXT);\nINSERT OR IGNORE INTO notas (id, texto) VALUES (1, 'Nota 1');",
                             style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
                         )
                     },
@@ -506,14 +570,42 @@ fun ImportExportScreen(
                     }
                 }
 
-                scriptOutputMessage?.let { msg ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = msg,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                val outputMsg = scriptOutputMessage
+                if (outputMsg != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = outputMsg,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                FilledTonalButton(
+                                    onClick = onNavigateToTables,
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Ver Tablas", style = MaterialTheme.typography.labelSmall)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -541,40 +633,85 @@ fun ImportExportScreen(
                 }
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    "Carga esquemas relacionales pre-configurados para practicar SQL:",
+                    "Al seleccionar una base de datos didáctica, se creará y se abrirá automáticamente en la sección Tablas para comenzar a explorar:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(12.dp))
 
+                fun loadEducationalDb(templateId: String, templateTitle: String) {
+                    isProcessing = true
+                    scope.launch {
+                        val name = "${templateId}_${System.currentTimeMillis() % 10000}.db"
+                        val ok = dbManager.createNewDatabase(name, templateId)
+                        isProcessing = false
+                        if (ok) {
+                            onDatabaseChanged()
+                            Toast.makeText(context, "Base didáctica '$templateTitle' activada con éxito.", Toast.LENGTH_SHORT).show()
+                            // Close import view and navigate straight to tables!
+                            onNavigateToTables()
+                        } else {
+                            Toast.makeText(context, "No se pudo crear la base de datos.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+
+                // Educational Database 1: Universidad & Cursos
                 OutlinedButton(
-                    onClick = {
-                        val name = "universidad_${System.currentTimeMillis() % 1000}.db"
-                        dbManager.createNewDatabase(name, "university")
-                        onDatabaseChanged()
-                        Toast.makeText(context, "Base de datos de Universidad creada y activada.", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                    onClick = { loadEducationalDb("university", "Universidad & Cursos") },
+                    modifier = Modifier.fillMaxWidth().testTag("didactic_db_university")
                 ) {
                     Icon(Icons.Outlined.School, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cargar Sistema Universitario (Estudiantes, Cursos, Notas)")
+                    Text("Universidad (Estudiantes, Profesores, Cursos, Notas)")
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // Educational Database 2: Comercio Electrónico
                 OutlinedButton(
-                    onClick = {
-                        val name = "comercio_${System.currentTimeMillis() % 1000}.db"
-                        dbManager.createNewDatabase(name, "ecommerce")
-                        onDatabaseChanged()
-                        Toast.makeText(context, "Base de datos de Comercio creada y activada.", Toast.LENGTH_SHORT).show()
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                    onClick = { loadEducationalDb("ecommerce", "Comercio Electrónico") },
+                    modifier = Modifier.fillMaxWidth().testTag("didactic_db_ecommerce")
                 ) {
                     Icon(Icons.Outlined.ShoppingCart, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Cargar Comercio Electrónico (Artículos, Categorías)")
+                    Text("Comercio Electrónico (Usuarios, Categorías, Artículos)")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Educational Database 3: Tienda & Clientes (Relacional)
+                OutlinedButton(
+                    onClick = { loadEducationalDb("sample", "Tienda & Clientes") },
+                    modifier = Modifier.fillMaxWidth().testTag("didactic_db_sample")
+                ) {
+                    Icon(Icons.Outlined.Storefront, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Tienda & Pedidos (Clientes, Productos, Facturación)")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Educational Database 4: Clínica & Citas Médicas
+                OutlinedButton(
+                    onClick = { loadEducationalDb("clinic", "Clínica & Citas Médicas") },
+                    modifier = Modifier.fillMaxWidth().testTag("didactic_db_clinic")
+                ) {
+                    Icon(Icons.Outlined.LocalHospital, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Clínica Médica (Médicos, Pacientes, Citas)")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Educational Database 5: Gestión de Proyectos
+                OutlinedButton(
+                    onClick = { loadEducationalDb("projects", "Gestión de Proyectos") },
+                    modifier = Modifier.fillMaxWidth().testTag("didactic_db_projects")
+                ) {
+                    Icon(Icons.Outlined.TaskAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Gestión de Proyectos (Proyectos, Miembros, Tareas)")
                 }
             }
         }
@@ -603,6 +740,8 @@ fun ImportExportScreen(
                     Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
                     if (result.isSuccess) {
                         onDatabaseChanged()
+                        // Automatically close import flow and navigate to tables to view imported table!
+                        onNavigateToTables()
                     }
                 }
             },

@@ -1,9 +1,5 @@
 package com.example.ui.components
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,8 +20,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ButtonDefaults
@@ -60,9 +56,9 @@ fun SqlResultTable(
     result: SqlExecutionResult,
     onExportCsv: () -> Unit,
     onExportJson: () -> Unit,
+    onOpenReport: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredRows by remember(result.rows, searchQuery) {
@@ -77,23 +73,6 @@ fun SqlResultTable(
         }
     }
 
-    fun copyToClipboard(text: String, label: String) {
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText(label, text)
-        clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, "$label copiado al portapapeles", Toast.LENGTH_SHORT).show()
-    }
-
-    fun copyAsMarkdown() {
-        val sb = StringBuilder()
-        sb.append("| ").append(result.columns.joinToString(" | ")).append(" |\n")
-        sb.append("| ").append(result.columns.joinToString(" | ") { "---" }).append(" |\n")
-        for (r in filteredRows) {
-            sb.append("| ").append(r.joinToString(" | ")).append(" |\n")
-        }
-        copyToClipboard(sb.toString(), "Tabla Markdown")
-    }
-
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -102,7 +81,7 @@ fun SqlResultTable(
         tonalElevation = 2.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            // Header bar: Search filter and Export actions
+            // Header bar: Search filter and Export/Report actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -150,17 +129,31 @@ fun SqlResultTable(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilledTonalButton(
-                        onClick = onExportCsv,
+                        onClick = onOpenReport,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        modifier = Modifier.height(36.dp).testTag("export_csv_btn"),
+                        modifier = Modifier.height(36.dp).testTag("open_report_btn"),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = MaterialTheme.colorScheme.primaryContainer,
                             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     ) {
+                        Icon(imageVector = Icons.Outlined.Assessment, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Informe", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                    }
+
+                    FilledTonalButton(
+                        onClick = onExportCsv,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.height(36.dp).testTag("export_csv_btn"),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
                         Icon(imageVector = Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("CSV", style = MaterialTheme.typography.labelSmall)
+                        Text("CSV", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
                     }
 
                     FilledTonalButton(
@@ -168,23 +161,11 @@ fun SqlResultTable(
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         modifier = Modifier.height(36.dp).testTag("export_json_btn"),
                         colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            contentColor = MaterialTheme.colorScheme.onSurface
                         )
                     ) {
-                        Text("JSON", style = MaterialTheme.typography.labelSmall)
-                    }
-
-                    IconButton(
-                        onClick = { copyAsMarkdown() },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.ContentCopy,
-                            contentDescription = "Copiar como Markdown",
-                            modifier = Modifier.size(18.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        Text("JSON", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
                     }
                 }
             }
@@ -281,7 +262,6 @@ fun SqlResultTable(
                                         modifier = Modifier
                                             .width(130.dp)
                                             .padding(horizontal = 6.dp)
-                                            .clickable { copyToClipboard(cellValue, "Valor") }
                                     )
                                 }
                             }
@@ -304,9 +284,9 @@ fun SqlResultTable(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "Toca una celda para copiar",
+                    text = "Desliza para ver más datos",
                     style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
             }
         }

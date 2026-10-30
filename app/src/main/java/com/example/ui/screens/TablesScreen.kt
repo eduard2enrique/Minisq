@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
@@ -41,9 +43,13 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Assignment
+import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.Today
+import androidx.compose.material.icons.outlined.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -92,11 +98,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -113,6 +118,11 @@ fun TablesScreen(
     dbManager: DatabaseManager,
     tables: List<TableSummary>,
     onRefreshTables: () -> Unit,
+    activeDbName: String = dbManager.getCurrentDbName(),
+    onNavigateToDesigner: () -> Unit = {},
+    onNavigateToImport: () -> Unit = {},
+    onNavigateToSql: (String) -> Unit = {},
+    onResetCurrentDb: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -120,6 +130,10 @@ fun TablesScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedTableName by remember { mutableStateOf<String?>(null) }
+
+    BackHandler(enabled = selectedTableName != null) {
+        selectedTableName = null
+    }
 
     // Table detail state
     var selectedTableSchema by remember { mutableStateOf<TableSchemaDetail?>(null) }
@@ -132,6 +146,7 @@ fun TablesScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showDropConfirmDialog by remember { mutableStateOf(false) }
     var showAddColumnDialog by remember { mutableStateOf(false) }
+    var showResetConfirmDialog by remember { mutableStateOf(false) }
     var columnToDelete by remember { mutableStateOf<String?>(null) }
     var editingRowIndex by remember { mutableStateOf<Int?>(null) }
 
@@ -139,7 +154,7 @@ fun TablesScreen(
     val selectedRowIndices = remember { mutableStateListOf<Int>() }
     var showDeleteMultipleDialog by remember { mutableStateOf(false) }
 
-    fun loadTableData(tableName: String) {
+    fun loadTableData(tableName: String, showFeedback: Boolean = false) {
         isLoadingData = true
         selectedRowIndices.clear()
         scope.launch {
@@ -148,6 +163,10 @@ fun TablesScreen(
             val dataRes = dbManager.executeSql("SELECT * FROM \"$tableName\" LIMIT 200;")
             tableDataResult = dataRes
             isLoadingData = false
+            if (showFeedback) {
+                val rowCount = dataRes.rows.size
+                Toast.makeText(context, "Tabla recargada: $rowCount registro(s)", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -166,51 +185,236 @@ fun TablesScreen(
             .padding(14.dp)
     ) {
         if (selectedTableName == null) {
-            // Table Overview List
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("Buscar tablas...", style = MaterialTheme.typography.bodySmall) },
-                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall,
+            if (tables.isEmpty()) {
+                // Empty state matching the user's mockup
+                Column(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp)
-                        .padding(end = 8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                )
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Header: Icon + "Tablas"
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp, bottom = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Storage,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = "Tablas",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
 
-                IconButton(onClick = onRefreshTables) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = "Actualizar")
-                }
-            }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 36.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Base ",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val cleanDb = activeDbName.removeSuffix(".db")
+                        val dynamicFontSize = when {
+                            cleanDb.length > 22 -> 11.5.sp
+                            cleanDb.length > 15 -> 13.sp
+                            else -> 14.sp
+                        }
+                        Text(
+                            text = cleanDb,
+                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = dynamicFontSize),
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = " · todavía sin tablas",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
 
-            if (filteredTables.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    // Large clipboard icon
+                    Icon(
+                        imageVector = Icons.Outlined.Assignment,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                        modifier = Modifier.size(76.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
                     Text(
-                        "No se encontraron tablas.",
+                        text = "Base de datos lista",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = "Elige cómo quieres crear tu primera tabla.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    Spacer(modifier = Modifier.height(28.dp))
+
+                    // Button 1: + Crear tabla
+                    Button(
+                        onClick = onNavigateToDesigner,
+                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .height(48.dp)
+                            .testTag("empty_state_create_table_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Crear tabla",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Button 2: Importar CSV / Excel
+                    FilledTonalButton(
+                        onClick = onNavigateToImport,
+                        shape = RoundedCornerShape(24.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .height(48.dp)
+                            .testTag("empty_state_import_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.UploadFile,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Importar CSV / Excel",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Button 3: >_ Crear con SQL
+                    TextButton(
+                        onClick = {
+                            val starterSql = "-- Crear primera tabla en ${activeDbName.removeSuffix(".db")} (segura contra duplicados)\nCREATE TABLE IF NOT EXISTS \"mi_primera_tabla\" (\n  \"id\" INTEGER PRIMARY KEY AUTOINCREMENT,\n  \"nombre\" TEXT NOT NULL,\n  \"fecha_creacion\" TEXT DEFAULT CURRENT_TIMESTAMP\n);\n\n-- Inserción segura que no falla al re-ejecutar:\nINSERT OR IGNORE INTO \"mi_primera_tabla\" (\"id\", \"nombre\")\nVALUES (1, 'Primer Registro');\n\nSELECT * FROM \"mi_primera_tabla\";\n"
+                            onNavigateToSql(starterSql)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .height(44.dp)
+                            .testTag("empty_state_sql_btn")
+                    ) {
+                        Text(
+                            text = ">_ ",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Crear con SQL",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 20.dp)
+                // Table Overview List
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Buscar tablas en ${activeDbName.removeSuffix(".db")}...", style = MaterialTheme.typography.bodySmall) },
+                        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .padding(end = 8.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onRefreshTables) {
+                            Icon(Icons.Outlined.Refresh, contentDescription = "Actualizar")
+                        }
+                        if (onResetCurrentDb != null) {
+                            IconButton(
+                                onClick = { showResetConfirmDialog = true },
+                                modifier = Modifier.testTag("reset_db_header_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.RestartAlt,
+                                    contentDescription = "Restablecer de fábrica",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (filteredTables.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            "No se encontraron tablas que coincidan con \"$searchQuery\".",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 20.dp)
+                    ) {
                     items(filteredTables) { table ->
                         Card(
                             modifier = Modifier
@@ -256,8 +460,9 @@ fun TablesScreen(
                     }
                 }
             }
-        } else {
-            // Selected Table Detail View
+        }
+    } else {
+        // Selected Table Detail View
             val tableName = selectedTableName!!
             val schema = selectedTableSchema
 
@@ -266,24 +471,36 @@ fun TablesScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false).padding(end = 6.dp)
+                ) {
                     IconButton(onClick = {
                         selectedTableName = null
                         onRefreshTables()
                     }) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Volver")
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Column {
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                        val dynamicTableFontSize = when {
+                            tableName.length > 22 -> 12.sp
+                            tableName.length > 15 -> 14.sp
+                            else -> 16.sp
+                        }
                         Text(
                             text = tableName,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = dynamicTableFontSize),
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = "${tableDataResult?.rows?.size ?: 0} registros",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -298,8 +515,11 @@ fun TablesScreen(
                         Text("+ Fila", style = MaterialTheme.typography.labelSmall)
                     }
 
-                    IconButton(onClick = { loadTableData(tableName) }) {
-                        Icon(Icons.Outlined.Refresh, contentDescription = "Recargar")
+                    IconButton(
+                        onClick = { loadTableData(tableName, showFeedback = true) },
+                        modifier = Modifier.testTag("reload_table_data_btn")
+                    ) {
+                        Icon(Icons.Outlined.Refresh, contentDescription = "Recargar datos de la tabla")
                     }
                 }
             }
@@ -593,25 +813,41 @@ fun TablesScreen(
                                                                 overflow = TextOverflow.Ellipsis
                                                             )
                                                         }
-                                                        // Single Row delete button
-                                                        IconButton(
-                                                            onClick = {
-                                                                val pkCol = schema?.columns?.find { it.isPrimaryKey }?.name ?: data.columns.firstOrNull() ?: "id"
-                                                                val pkIndex = data.columns.indexOf(pkCol)
-                                                                val pkVal = row.getOrNull(if (pkIndex >= 0) pkIndex else 0) ?: ""
-                                                                scope.launch {
-                                                                    dbManager.deleteTableRow(tableName, pkCol, pkVal)
-                                                                    loadTableData(tableName)
-                                                                }
-                                                            },
-                                                            modifier = Modifier.size(28.dp)
+                                                        // Row action buttons: Edit & Delete
+                                                        Row(
+                                                            modifier = Modifier.width(70.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
                                                         ) {
-                                                            Icon(
-                                                                imageVector = Icons.Outlined.DeleteOutline,
-                                                                contentDescription = "Borrar fila",
-                                                                tint = MaterialTheme.colorScheme.error,
-                                                                modifier = Modifier.size(16.dp)
-                                                            )
+                                                            IconButton(
+                                                                onClick = { editingRowIndex = idx },
+                                                                modifier = Modifier.size(28.dp).testTag("edit_row_${idx}_btn")
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Outlined.Edit,
+                                                                    contentDescription = "Editar fila",
+                                                                    tint = MaterialTheme.colorScheme.primary,
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                            }
+                                                            IconButton(
+                                                                onClick = {
+                                                                    val pkCol = schema?.columns?.find { it.isPrimaryKey }?.name ?: data.columns.firstOrNull() ?: "id"
+                                                                    val pkIndex = data.columns.indexOf(pkCol)
+                                                                    val pkVal = row.getOrNull(if (pkIndex >= 0) pkIndex else 0) ?: ""
+                                                                    scope.launch {
+                                                                        dbManager.deleteTableRow(tableName, pkCol, pkVal)
+                                                                        loadTableData(tableName)
+                                                                    }
+                                                                },
+                                                                modifier = Modifier.size(28.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Outlined.DeleteOutline,
+                                                                    contentDescription = "Borrar fila",
+                                                                    tint = MaterialTheme.colorScheme.error,
+                                                                    modifier = Modifier.size(16.dp)
+                                                                )
+                                                            }
                                                         }
                                                     }
                                                 }
@@ -959,35 +1195,39 @@ fun TablesScreen(
 
         Dialog(
             onDismissRequest = { if (!isInserting) showInsertRowDialog = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.72f))
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .navigationBarsPadding()
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .safeDrawingPadding()
                     .imePadding()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.95f),
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp)
+                            .fillMaxSize()
+                            .padding(16.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f, fill = false).padding(end = 6.dp)
+                            ) {
                                 Icon(
                                     imageVector = Icons.Outlined.Add,
                                     contentDescription = null,
@@ -995,10 +1235,18 @@ fun TablesScreen(
                                     modifier = Modifier.size(22.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
+                                val tName = schema.tableName
+                                val dynamicTitleSize = when {
+                                    tName.length > 20 -> 13.sp
+                                    tName.length > 14 -> 14.5.sp
+                                    else -> 16.sp
+                                }
                                 Text(
-                                    text = "Nuevo Registro en '${schema.tableName}'",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
+                                    text = "Nuevo Registro en '$tName'",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontSize = dynamicTitleSize),
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                             IconButton(onClick = { showInsertRowDialog = false }) {
@@ -1077,7 +1325,7 @@ fun TablesScreen(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f, fill = false)
+                                .weight(1f, fill = true)
                                 .verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
@@ -1205,7 +1453,9 @@ fun TablesScreen(
                             Surface(
                                 shape = RoundedCornerShape(10.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 100.dp)
                             ) {
                                 Text(
                                     text = liveSql,
@@ -1215,60 +1465,314 @@ fun TablesScreen(
                                         lineHeight = 16.sp
                                     ),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(10.dp)
+                                    modifier = Modifier
+                                        .padding(10.dp)
+                                        .verticalScroll(rememberScrollState())
                                 )
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        // Permanently Anchored Bottom Action Bar: Always Elevated, Solid, and Visible
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 6.dp,
+                            shadowElevation = 8.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        scope.launch {
+                                            isInserting = true
+                                            val success = dbManager.insertTableRow(schema.tableName, inputValues.toMap())
+                                            isInserting = false
+                                            if (success) {
+                                                loadTableData(schema.tableName)
+                                                inputValues.clear()
+                                                Toast.makeText(context, "Registro insertado. Listo para el siguiente.", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Error al insertar registro.", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
+                                        .testTag("save_and_add_another_btn"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    enabled = !isInserting
+                                ) {
+                                    Text("+ Guardar y Otro", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
 
-                        // Dual Action Buttons: Save & Add Another, Save & Close
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            isInserting = true
+                                            val success = dbManager.insertTableRow(schema.tableName, inputValues.toMap())
+                                            isInserting = false
+                                            if (success) {
+                                                loadTableData(schema.tableName)
+                                                showInsertRowDialog = false
+                                                Toast.makeText(context, "Registro guardado exitosamente.", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Error al insertar registro.", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
+                                        .testTag("save_row_btn"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    enabled = !isInserting
+                                ) {
+                                    Text("Guardar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Modal: Edit Existing Row Dialog (with Pinned Bottom Save Button & Pre-populated Fields)
+    val editRowIdx = editingRowIndex
+    val curData = tableDataResult
+    if (editRowIdx != null && selectedTableSchema != null && curData != null && editRowIdx < curData.rows.size) {
+        val schema = selectedTableSchema!!
+        val targetRow = curData.rows[editRowIdx]
+        val pkCol = schema.columns.find { it.isPrimaryKey }?.name ?: curData.columns.firstOrNull() ?: "id"
+        val pkIndex = curData.columns.indexOf(pkCol)
+        val pkVal = targetRow.getOrNull(if (pkIndex >= 0) pkIndex else 0) ?: ""
+
+        val editInputValues = remember(editRowIdx) {
+            mutableStateMapOf<String, String>().apply {
+                curData.columns.forEachIndexed { i, colName ->
+                    this[colName] = targetRow.getOrNull(i) ?: ""
+                }
+            }
+        }
+        var isUpdating by remember { mutableStateOf(false) }
+
+        Dialog(
+            onDismissRequest = { if (!isUpdating) editingRowIndex = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .safeDrawingPadding()
+                    .imePadding()
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.95f),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                    ) {
+                        // Header Row with Title and Close Button
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            OutlinedButton(
-                                onClick = {
-                                    scope.launch {
-                                        isInserting = true
-                                        val success = dbManager.insertTableRow(schema.tableName, inputValues.toMap())
-                                        isInserting = false
-                                        if (success) {
-                                            loadTableData(schema.tableName)
-                                            inputValues.clear()
-                                            Toast.makeText(context, "Registro insertado. Listo para el siguiente.", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            Toast.makeText(context, "Error al insertar registro.", Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                enabled = !isInserting
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f, fill = false).padding(end = 6.dp)
                             ) {
-                                Text("+ Guardar y Otro", style = MaterialTheme.typography.labelSmall)
+                                Icon(
+                                    imageVector = Icons.Outlined.Edit,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                val tName = schema.tableName
+                                val dynamicTitleSize = when {
+                                    tName.length > 20 -> 13.sp
+                                    tName.length > 14 -> 14.5.sp
+                                    else -> 16.sp
+                                }
+                                Text(
+                                    text = "Editar Fila #${editRowIdx + 1} en '$tName'",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontSize = dynamicTitleSize),
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
+                            IconButton(onClick = { editingRowIndex = null }) {
+                                Icon(Icons.Outlined.Close, contentDescription = "Cerrar")
+                            }
+                        }
 
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        isInserting = true
-                                        val success = dbManager.insertTableRow(schema.tableName, inputValues.toMap())
-                                        isInserting = false
-                                        if (success) {
-                                            loadTableData(schema.tableName)
-                                            showInsertRowDialog = false
-                                            Toast.makeText(context, "Registro guardado exitosamente.", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            Toast.makeText(context, "Error al insertar registro.", Toast.LENGTH_LONG).show()
+                        Text(
+                            text = "Modifica los campos del registro. La clave primaria '$pkCol' ($pkVal) se utiliza para identificar la fila única.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Scrollable Input Fields Container
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f, fill = false)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            schema.columns.forEach { col ->
+                                val isPk = col.isPrimaryKey
+                                val currentValue = editInputValues[col.name] ?: ""
+
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isPk) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = col.name,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                if (isPk) {
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = SqlWarning.copy(alpha = 0.2f)
+                                                    ) {
+                                                        Text(
+                                                            text = "PK",
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                            color = SqlWarning,
+                                                            fontWeight = FontWeight.Bold,
+                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                            ) {
+                                                Text(
+                                                    text = col.type,
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
                                         }
+
+                                        Spacer(modifier = Modifier.height(6.dp))
+
+                                        OutlinedTextField(
+                                            value = currentValue,
+                                            onValueChange = { newVal ->
+                                                editInputValues[col.name] = newVal
+                                            },
+                                            enabled = !isPk,
+                                            modifier = Modifier.fillMaxWidth().testTag("edit_field_${col.name}"),
+                                            placeholder = { Text("Valor para ${col.name}...") },
+                                            singleLine = true,
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
                                     }
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                enabled = !isInserting
+                                }
+                            }
+                        }
+
+                        // Permanently Anchored Bottom Action Bar: Always Elevated, Solid, and Visible Above Keyboard
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 6.dp,
+                            shadowElevation = 8.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Guardar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                OutlinedButton(
+                                    onClick = { editingRowIndex = null },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
+                                        .testTag("cancel_edit_row_btn"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    enabled = !isUpdating
+                                ) {
+                                    Text("Cancelar", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            isUpdating = true
+                                            val success = dbManager.updateTableRow(schema.tableName, pkCol, pkVal, editInputValues.toMap())
+                                            isUpdating = false
+                                            if (success) {
+                                                loadTableData(schema.tableName)
+                                                editingRowIndex = null
+                                                Toast.makeText(context, "Registro actualizado exitosamente.", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, "Error al actualizar registro.", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(44.dp)
+                                        .testTag("save_edit_row_btn"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    enabled = !isUpdating
+                                ) {
+                                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Guardar Cambios", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
                             }
                         }
                     }
@@ -1335,26 +1839,26 @@ fun TablesScreen(
 
         Dialog(
             onDismissRequest = { showAddColumnDialog = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+            properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.7f))
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .navigationBarsPadding()
-                    .imePadding()
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .safeDrawingPadding()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.92f),
                     shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                 ) {
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .fillMaxSize()
                             .padding(18.dp)
                     ) {
                         Text(
@@ -1547,6 +2051,49 @@ fun TablesScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showDropConfirmDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    // Modal: Reset active database confirmation
+    if (showResetConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirmDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Outlined.CleaningServices,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Restablecer Base de Datos")
+                }
+            },
+            text = {
+                Text(
+                    "¿Deseas restaurar \"$activeDbName\" a su estado original de fábrica?\n\nSe restablecerán las tablas y datos de ejemplo iniciales (o se limpiará a 0 tablas si fue creada en blanco). Los cambios manuales se descartarán.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetConfirmDialog = false
+                        selectedTableName = null
+                        onResetCurrentDb?.invoke()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Restablecer")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirmDialog = false }) {
+                    Text("Cancelar")
+                }
             }
         )
     }

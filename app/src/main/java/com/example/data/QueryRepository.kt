@@ -187,6 +187,50 @@ class QueryRepository(context: Context) {
                 sql = "SELECT nombre, categoria, precio, stock\nFROM productos\nWHERE categoria = 'Electrónica' AND precio > 100\nORDER BY precio DESC;"
             ),
             SqlExample(
+                title = "Inserción con Clave Auto-Incremental (INSERT OR IGNORE)",
+                category = "Manipulación (DML)",
+                description = "Inserta un nuevo registro. Al omitir 'id', SQLite genera la clave primaria; con 'OR IGNORE' no falla si se ejecuta varias veces.",
+                sql = "-- Nota didáctica: Al omitir 'id', SQLite genera la clave primaria secuencial.\n" +
+                      "-- 'INSERT OR IGNORE' garantiza que puedas re-ejecutar el ejemplo sin errores de clave/email duplicado:\n" +
+                      "INSERT OR IGNORE INTO clientes (nombre, email, ciudad, saldo)\n" +
+                      "VALUES ('Valeria Castro', 'valeria.castro@ejemplo.com', 'Málaga', 280.00);"
+            ),
+            SqlExample(
+                title = "Inserción Segura (INSERT OR IGNORE)",
+                category = "Manipulación (DML)",
+                description = "Técnica didáctica para evitar errores por clave duplicada: si el registro o ID ya existe, SQLite lo ignora en lugar de fallar.",
+                sql = "-- 'INSERT OR IGNORE' es el estándar recomendado para scripts de prueba re-ejecutables:\n" +
+                      "-- Si la clave primaria 99 o el email ya existen, la consulta no dará error y continuará.\n" +
+                      "INSERT OR IGNORE INTO clientes (id, nombre, email, ciudad, saldo)\n" +
+                      "VALUES (99, 'Lucas Benítez', 'lucas.benitez@ejemplo.com', 'Bilbao', 350.50);"
+            ),
+            SqlExample(
+                title = "Inserción o Reemplazo (REPLACE INTO)",
+                category = "Manipulación (DML)",
+                description = "Si la clave primaria o valor UNIQUE ya existe, reemplaza la fila completa con los nuevos datos (Upsert).",
+                sql = "-- 'REPLACE INTO' (o 'INSERT OR REPLACE INTO') actualiza la fila si ya existe o la crea si no existe:\n" +
+                      "-- Permite re-ejecutar sin errores y mantiene los datos actualizados:\n" +
+                      "REPLACE INTO clientes (id, nombre, email, ciudad, saldo)\n" +
+                      "VALUES (1, 'Ana Torres Modificada', 'ana@ejemplo.com', 'Madrid Centro', 1500.00);"
+            ),
+            SqlExample(
+                title = "Actualización Segura (UPDATE con WHERE)",
+                category = "Manipulación (DML)",
+                description = "Modifica registros específicos. Importante: ¡Nunca olvides la cláusula WHERE o modificarás todas las filas!",
+                sql = "-- Regla de oro en SQL: Verifica siempre la condición WHERE antes de ejecutar UPDATE\n" +
+                      "UPDATE clientes\n" +
+                      "SET saldo = saldo + 50.00\n" +
+                      "WHERE ciudad = 'Madrid';"
+            ),
+            SqlExample(
+                title = "Eliminación Controlada (DELETE con WHERE)",
+                category = "Manipulación (DML)",
+                description = "Elimina registros que cumplan una condición. Sin WHERE, la tabla quedaría completamente vacía.",
+                sql = "-- Precaución didáctica: Siempre filtra con WHERE o clave primaria (id):\n" +
+                      "DELETE FROM clientes\n" +
+                      "WHERE saldo = 0.0 AND ciudad IS NULL;"
+            ),
+            SqlExample(
                 title = "Relación con INNER JOIN",
                 category = "Relaciones / JOIN",
                 description = "Combina pedidos con sus respectivos clientes usando la clave foránea.",
@@ -223,9 +267,9 @@ class QueryRepository(context: Context) {
                 sql = "SELECT nombre, email\nFROM clientes\nWHERE id IN (\n    SELECT cliente_id\n    FROM pedidos\n    WHERE estado = 'Entregado'\n);"
             ),
             SqlExample(
-                title = "Creación de Tabla con Clave Foránea",
+                title = "Creación de Tabla Segura (IF NOT EXISTS)",
                 category = "DDL / Estructura",
-                description = "Crea una nueva tabla de proveedores con restricciones de integridad.",
+                description = "Crea una tabla con 'IF NOT EXISTS' e inserta con 'INSERT OR IGNORE' para total re-ejecución sin errores.",
                 sql = """
                     CREATE TABLE IF NOT EXISTS proveedores (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -233,6 +277,9 @@ class QueryRepository(context: Context) {
                         telefono TEXT,
                         pais TEXT DEFAULT 'España'
                     );
+
+                    INSERT OR IGNORE INTO proveedores (id, nombre_empresa, telefono)
+                    VALUES (1, 'Logística Ibérica SL', '+34 912 345 678');
                 """.trimIndent()
             ),
             SqlExample(

@@ -43,7 +43,7 @@ object SqlScriptHelper {
     )
 
     private val INSERT_INTO_PATTERN = Pattern.compile(
-        """(?i)INSERT\s+INTO\s+["`]?([a-zA-Z0-9_]+)["`]?""",
+        """(?i)(?:INSERT\s+(?:OR\s+(?:IGNORE|REPLACE)\s+)?INTO|REPLACE\s+INTO)\s+["`]?([a-zA-Z0-9_]+)["`]?""",
         Pattern.CASE_INSENSITIVE
     )
 
@@ -406,15 +406,15 @@ object SqlScriptHelper {
             CREATE INDEX IF NOT EXISTS idx_empleados_depto ON empleados(departamento_id);
             CREATE INDEX IF NOT EXISTS idx_asignaciones_emp_proy ON asignaciones(empleado_id, proyecto_id);
 
-            -- Datos Iniciales de Departamentos
-            INSERT INTO departamentos (codigo, nombre, presupuesto_anual, activo) VALUES 
+            -- Datos Iniciales de Departamentos (idempotentes con INSERT OR IGNORE)
+            INSERT OR IGNORE INTO departamentos (codigo, nombre, presupuesto_anual, activo) VALUES 
                 ('TI', 'Tecnología e Infraestructura', 180000.00, 1),
                 ('MKT', 'Marketing Digital y Ventas', 95000.00, 1),
                 ('RRHH', 'Talento y Recursos Humanos', 60000.00, 1),
                 ('FIN', 'Finanzas y Contabilidad', 110000.00, 1);
 
             -- Datos Iniciales de Empleados
-            INSERT INTO empleados (nombre, apellidos, email, cargo, salario, fecha_contratacion, departamento_id) VALUES 
+            INSERT OR IGNORE INTO empleados (nombre, apellidos, email, cargo, salario, fecha_contratacion, departamento_id) VALUES 
                 ('Alejandro', 'Ruiz Morales', 'alejandro.ruiz@empresa.com', 'Senior Tech Lead', 54000.00, '2023-01-15', 1),
                 ('Beatriz', 'Fernández Gil', 'beatriz.fernandez@empresa.com', 'Fullstack Engineer', 42000.00, '2023-06-01', 1),
                 ('Carmen', 'Navarro Ortiz', 'carmen.navarro@empresa.com', 'Marketing Lead', 38000.00, '2023-03-10', 2),
@@ -423,13 +423,13 @@ object SqlScriptHelper {
                 ('Fernando', 'Serrano Castro', 'fernando.serrano@empresa.com', 'Data Analyst', 41000.00, '2023-09-15', 1);
 
             -- Datos Iniciales de Proyectos
-            INSERT INTO proyectos (titulo, estado, presupuesto, fecha_inicio, fecha_fin) VALUES 
+            INSERT OR IGNORE INTO proyectos (titulo, estado, presupuesto, fecha_inicio, fecha_fin) VALUES 
                 ('Migración Cloud y Microservicios', 'En Progreso', 75000.00, '2026-01-10', '2026-11-30'),
                 ('Campaña Expansión Internacional', 'Planificado', 40000.00, '2026-05-01', '2026-09-30'),
                 ('Portal de Autoservicio de Empleados', 'Completado', 22000.00, '2025-08-01', '2026-02-15');
 
             -- Asignaciones de Empleados a Proyectos
-            INSERT INTO asignaciones (empleado_id, proyecto_id, horas_semanales) VALUES 
+            INSERT OR IGNORE INTO asignaciones (empleado_id, proyecto_id, horas_semanales) VALUES 
                 (1, 1, 30.0),
                 (2, 1, 40.0),
                 (6, 1, 20.0),

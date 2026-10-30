@@ -300,9 +300,13 @@ object SqlSyntaxValidator {
         if (insertMatcher.find()) {
             val token = insertMatcher.group(1) ?: ""
             if (!token.equals("INTO", ignoreCase = true) && !token.equals("OR", ignoreCase = true)) {
+                val line = getLineNumber(sql, insertMatcher.start())
                 issues.add(
                     SqlSyntaxIssue(
                         message = "Falta la palabra clave 'INTO' después de INSERT (ej. INSERT INTO $token ...)",
+                        line = line,
+                        startIndex = insertMatcher.start(),
+                        endIndex = insertMatcher.end(),
                         severity = IssueSeverity.ERROR,
                         suggestion = "Usa INSERT INTO $token"
                     )
@@ -316,9 +320,13 @@ object SqlSyntaxValidator {
         if (deleteMatcher.find()) {
             val nextWord = deleteMatcher.group(1) ?: ""
             if (!nextWord.equals("FROM", ignoreCase = true)) {
+                val line = getLineNumber(sql, deleteMatcher.start())
                 issues.add(
                     SqlSyntaxIssue(
                         message = "En SQLite la sentencia DELETE requiere FROM (ej. DELETE FROM $nextWord)",
+                        line = line,
+                        startIndex = deleteMatcher.start(),
+                        endIndex = deleteMatcher.end(),
                         severity = IssueSeverity.ERROR,
                         suggestion = "Usa DELETE FROM $nextWord"
                     )
@@ -338,6 +346,9 @@ object SqlSyntaxValidator {
                 issues.add(
                     SqlSyntaxIssue(
                         message = "La cláusula WHERE debe colocarse después de FROM",
+                        line = getLineNumber(sql, whereIdx),
+                        startIndex = whereIdx,
+                        endIndex = whereIdx + 5,
                         severity = IssueSeverity.ERROR,
                         suggestion = "Coloca WHERE después de FROM tabla"
                     )
@@ -349,6 +360,9 @@ object SqlSyntaxValidator {
             issues.add(
                 SqlSyntaxIssue(
                     message = "La cláusula WHERE debe ir antes de GROUP BY (usa HAVING para filtrar grupos)",
+                    line = getLineNumber(sql, whereIdx),
+                    startIndex = whereIdx,
+                    endIndex = whereIdx + 5,
                     severity = IssueSeverity.ERROR,
                     suggestion = "Mueve WHERE antes de GROUP BY"
                 )
@@ -359,6 +373,9 @@ object SqlSyntaxValidator {
             issues.add(
                 SqlSyntaxIssue(
                     message = "La cláusula WHERE debe colocarse antes de ORDER BY",
+                    line = getLineNumber(sql, whereIdx),
+                    startIndex = whereIdx,
+                    endIndex = whereIdx + 5,
                     severity = IssueSeverity.ERROR,
                     suggestion = "Coloca WHERE antes de ORDER BY"
                 )
@@ -369,26 +386,48 @@ object SqlSyntaxValidator {
             issues.add(
                 SqlSyntaxIssue(
                     message = "La cláusula GROUP BY debe colocarse antes de ORDER BY",
+                    line = getLineNumber(sql, groupIdx),
+                    startIndex = groupIdx,
+                    endIndex = groupIdx + 8,
                     severity = IssueSeverity.ERROR,
                     suggestion = "Mueve GROUP BY antes de ORDER BY"
                 )
             )
         }
 
-        // 5. JOIN without ON
-        val joinPattern = Pattern.compile("\\b(INNER\\s+JOIN|LEFT\\s+JOIN|JOIN)\\s+([A-Za-z_][A-Za-z0-9_]*)(?!\\s+ON\\b|\\s+USING\\b)", Pattern.CASE_INSENSITIVE)
+        // 5. JOIN without ON or USING
+        // Handles: INNER JOIN, LEFT JOIN, RIGHT JOIN, FULL JOIN, JOIN
+        // Supports table alias with or without AS:
+        //   INNER JOIN clientes c ON p.cliente_id = c.id
+        //   INNER JOIN clientes AS c ON p.cliente_id = c.id
+        //   INNER JOIN clientes ON p.cliente_id = clientes.id
+        //   INNER JOIN clientes USING (cliente_id)
+        val joinPattern = Pattern.compile(
+            "\\b(INNER\\s+JOIN|LEFT\\s+JOIN|RIGHT\\s+JOIN|FULL\\s+JOIN|JOIN)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+            Pattern.CASE_INSENSITIVE
+        )
         val joinMatcher = joinPattern.matcher(cleanSql)
         while (joinMatcher.find()) {
-            val joinType = joinMatcher.group(1)
-            val joinedTable = joinMatcher.group(2)
-            // Check if there is an ON after the table
+            val joinType = joinMatcher.group(1) ?: "JOIN"
+            val joinedTable = joinMatcher.group(2) ?: "tabla"
             val afterJoin = cleanSql.substring(joinMatcher.end()).trimStart()
-            if (!afterJoin.startsWith("ON") && !afterJoin.startsWith("USING") && !afterJoin.startsWith("AS") && !afterJoin.matches(Regex("^[A-Za-z_][A-Za-z0-9_]*\\s+(ON|USING).*"))) {
+
+            // Look for optional [AS] alias followed by ON or USING across newlines
+            val hasCondition = Pattern.compile(
+                "^(?:(?:AS\\s+)?[A-Za-z_][A-Za-z0-9_]*\\s+)?(ON|USING)\\b",
+                Pattern.CASE_INSENSITIVE or Pattern.DOTALL
+            ).matcher(afterJoin).find()
+
+            if (!hasCondition) {
+                val line = getLineNumber(sql, joinMatcher.start())
                 issues.add(
                     SqlSyntaxIssue(
-                        message = "$joinType con '$joinedTable' requiere una condición ON (ej. ON a.id = b.id)",
+                        message = "$joinType con '$joinedTable' requiere una condición ON (ej. ON $joinedTable.id = tabla.id)",
+                        line = line,
+                        startIndex = joinMatcher.start(),
+                        endIndex = joinMatcher.end(),
                         severity = IssueSeverity.WARNING,
-                        suggestion = "Añade ON tabla1.col = tabla2.col"
+                        suggestion = "Añade ON $joinedTable.id = tabla.id"
                     )
                 )
             }

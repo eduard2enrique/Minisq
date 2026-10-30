@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -97,7 +98,10 @@ fun SpreadsheetImportDialog(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Icon(
                         imageVector = Icons.Outlined.Description,
                         contentDescription = null,
@@ -187,10 +191,37 @@ fun SpreadsheetImportDialog(
                     OutlinedTextField(
                         value = targetTableName,
                         onValueChange = { targetTableName = it },
-                        label = { Text("Nombre de la nueva tabla") },
+                        label = { Text("Nombre de la tabla") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth().testTag("import_target_table_input")
                     )
+
+                    val tableAlreadyExists = existingTables.any { it.equals(targetTableName.trim(), ignoreCase = true) }
+                    if (tableAlreadyExists) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Info,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "La tabla '$targetTableName' ya existe. Al importar se reemplazará con las columnas y datos del archivo.",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
                 } else {
                     var expandedExisting by remember { mutableStateOf(false) }
                     Box {

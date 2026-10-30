@@ -25,11 +25,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.PieChart
 import androidx.compose.material.icons.outlined.ShowChart
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -51,6 +54,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -99,6 +103,7 @@ private val CHART_PALETTE = listOf(
 @Composable
 fun SqlQueryChart(
     result: SqlExecutionResult,
+    onOpenReport: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (result.columns.isEmpty() || result.rows.isEmpty()) {
@@ -181,13 +186,16 @@ fun SqlQueryChart(
         tonalElevation = 2.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-            // Header with Chart Type Selector (Recharts style)
+            // Header with Title & Chart Options Toggle
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     Icon(
                         imageVector = when (selectedChartType) {
                             ChartType.BAR -> Icons.Outlined.BarChart
@@ -200,39 +208,149 @@ fun SqlQueryChart(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Visualización Gráfica",
+                        text = "Gráfico",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                // Chart Type Segmented Pills
                 Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    ChartType.values().forEach { type ->
-                        val isSelected = selectedChartType == type
-                        Surface(
-                            shape = RoundedCornerShape(18.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(18.dp))
-                                .clickable { selectedChartType = type }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                    if (onOpenReport != null) {
+                        FilledTonalButton(
+                            onClick = onOpenReport,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
                         ) {
+                            Icon(imageVector = Icons.Outlined.Assessment, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Informe", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                        }
+                    }
+
+                    // Interactive mode toggles (Donut / Area Fill)
+                    if (selectedChartType == ChartType.PIE) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { isDonutMode = !isDonutMode }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(start = 8.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Dona",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isDonutMode) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isDonutMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Switch(
+                                    checked = isDonutMode,
+                                    onCheckedChange = { isDonutMode = it },
+                                    modifier = Modifier
+                                        .height(24.dp)
+                                        .scale(0.7f)
+                                )
+                            }
+                        }
+                    } else if (selectedChartType == ChartType.LINE) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showAreaFill = !showAreaFill }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(start = 8.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Área",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (showAreaFill) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (showAreaFill) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                                Switch(
+                                    checked = showAreaFill,
+                                    onCheckedChange = { showAreaFill = it },
+                                    modifier = Modifier
+                                        .height(24.dp)
+                                        .scale(0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Chart Type Segmented Pills (Full width, equally distributed, no text wrapping)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                ChartType.entries.forEach { type ->
+                    val isSelected = selectedChartType == type
+                    Surface(
+                        shape = RoundedCornerShape(9.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(9.dp))
+                            .clickable { selectedChartType = type }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(vertical = 7.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = when (type) {
+                                    ChartType.BAR -> Icons.Outlined.BarChart
+                                    ChartType.LINE -> Icons.Outlined.ShowChart
+                                    ChartType.PIE -> Icons.Outlined.PieChart
+                                },
+                                contentDescription = null,
+                                tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = when (type) {
                                     ChartType.BAR -> "Barras"
                                     ChartType.LINE -> "Líneas"
                                     ChartType.PIE -> "Pastel"
                                 },
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -307,37 +425,6 @@ fun SqlQueryChart(
                             )
                         }
                     }
-                }
-            }
-
-            // Options toggles (Donut / Area)
-            if (selectedChartType == ChartType.PIE) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Text("Formato Dona", style = MaterialTheme.typography.labelSmall)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Switch(
-                        checked = isDonutMode,
-                        onCheckedChange = { isDonutMode = it },
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            } else if (selectedChartType == ChartType.LINE) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Text("Relleno de Área", style = MaterialTheme.typography.labelSmall)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Switch(
-                        checked = showAreaFill,
-                        onCheckedChange = { showAreaFill = it },
-                        modifier = Modifier.size(24.dp)
-                    )
                 }
             }
 

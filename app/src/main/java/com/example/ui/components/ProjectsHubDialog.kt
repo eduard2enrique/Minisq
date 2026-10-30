@@ -35,7 +35,10 @@ import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.LocalHospital
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.TableChart
@@ -43,6 +46,7 @@ import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -103,6 +107,7 @@ fun ProjectsHubDialog(
     onCreateDb: (name: String, template: String) -> Unit,
     onDeleteDb: (String) -> Unit,
     onRenameDb: (oldName: String, newName: String) -> Unit,
+    onResetDb: ((String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -112,6 +117,15 @@ fun ProjectsHubDialog(
     // Pre-built template definitions
     val templates = remember {
         listOf(
+            DatabaseTemplateInfo(
+                id = "empty",
+                title = "Base de Datos en Blanco",
+                description = "Base de datos SQLite limpia sin tablas predefinidas, lista para crear tu propio esquema.",
+                icon = Icons.Outlined.TableChart,
+                iconColor = Color(0xFF94A3B8),
+                tables = emptyList(),
+                defaultProjectName = "mi_nueva_base"
+            ),
             DatabaseTemplateInfo(
                 id = "sample",
                 title = "Tienda & Clientes",
@@ -156,15 +170,6 @@ fun ProjectsHubDialog(
                 iconColor = Color(0xFFFB7185),
                 tables = listOf("medicos", "pacientes", "citas"),
                 defaultProjectName = "clinica_salud"
-            ),
-            DatabaseTemplateInfo(
-                id = "empty",
-                title = "Proyecto en Blanco",
-                description = "Base de datos SQLite limpia sin tablas predefinidas, lista para crear tu propio esquema.",
-                icon = Icons.Outlined.TableChart,
-                iconColor = Color(0xFF94A3B8),
-                tables = emptyList(),
-                defaultProjectName = "mi_nuevo_proyecto"
             )
         )
     }
@@ -176,6 +181,8 @@ fun ProjectsHubDialog(
     // Rename target state
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameInputName by remember { mutableStateOf("") }
+    var searchDbQuery by remember { mutableStateOf("") }
+    var confirmResetTarget by remember { mutableStateOf<String?>(null) }
 
     // Expanded table summaries per database
     val expandedTablesMap = remember { mutableStateMapOf<String, List<TableSummary>>() }
@@ -215,7 +222,10 @@ fun ProjectsHubDialog(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -233,12 +243,14 @@ fun ProjectsHubDialog(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "MiniSQL Pro 1.0 • Proyectos",
+                            text = "Mis Bases de Datos",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "${databases.size} ${if (databases.size == 1) "proyecto creado" else "proyectos creados"}",
+                            text = "${databases.size} ${if (databases.size == 1) "base registrada" else "bases registradas"}",
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -252,7 +264,7 @@ fun ProjectsHubDialog(
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Top Tab Switcher: Mis Proyectos vs Nuevo Proyecto
+                // Top Tab Switcher: Mis Proyectos vs Nueva BD
                 TabRow(
                     selectedTabIndex = selectedTab,
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -264,7 +276,13 @@ fun ProjectsHubDialog(
                         onClick = { selectedTab = 0 },
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Mis Proyectos", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text(
+                                    text = "Mis Proyectos",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Surface(
                                     shape = CircleShape,
@@ -287,7 +305,13 @@ fun ProjectsHubDialog(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(3.dp))
-                                Text("Nuevo Proyecto", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text(
+                                    text = "Nueva BD",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
                     )
@@ -340,166 +364,242 @@ fun ProjectsHubDialog(
                     }
                 } else if (selectedTab == 0) {
                     // TAB 0: List of Existing Database Projects
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 380.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(databases) { dbName ->
-                            val isActive = dbName == currentDb
-                            val isExpanded = expandedStateMap[dbName] ?: false
-                            val tables = expandedTablesMap[dbName] ?: emptyList()
-                            val isLoadingTables = loadingStateMap[dbName] ?: false
+                    val displayedDatabases = if (searchDbQuery.isBlank()) databases else databases.filter { it.contains(searchDbQuery, ignoreCase = true) }
 
-                            Card(
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        if (databases.size >= 4) {
+                            OutlinedTextField(
+                                value = searchDbQuery,
+                                onValueChange = { searchDbQuery = it },
+                                placeholder = { Text("Buscar base de datos...", style = MaterialTheme.typography.bodySmall) },
+                                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .testTag("project_item_$dbName"),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isActive) {
-                                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
-                                    } else {
-                                        MaterialTheme.colorScheme.surface
-                                    }
-                                ),
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                                    else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
-                                ),
-                                shape = RoundedCornerShape(14.dp)
+                                    .height(44.dp)
+                                    .padding(bottom = 8.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            )
+                        }
+
+                        if (displayedDatabases.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                                    // Row 1: Icon, Title, Active Badge, Dropdown toggle
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(34.dp)
-                                                    .clip(RoundedCornerShape(9.dp))
-                                                    .background(
-                                                        if (isActive) SqlBlue.copy(alpha = 0.15f)
-                                                        else MaterialTheme.colorScheme.surfaceVariant
-                                                    ),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Folder,
-                                                    contentDescription = null,
-                                                    tint = if (isActive) SqlBlue else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
+                                Text(
+                                    text = "No se encontraron bases con \"$searchDbQuery\"",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 380.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(displayedDatabases) { dbName ->
+                                    val isActive = dbName == currentDb
+                                    val isExpanded = expandedStateMap[dbName] ?: false
+                                    val tables = expandedTablesMap[dbName] ?: emptyList()
+                                    val isLoadingTables = loadingStateMap[dbName] ?: false
+
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                if (!isActive) {
+                                                    onSelectDb(dbName)
+                                                    onDismiss()
+                                                }
                                             }
+                                            .testTag("project_item_$dbName"),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (isActive) {
+                                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
+                                            } else {
+                                                MaterialTheme.colorScheme.surface
+                                            }
+                                        ),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                                            else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                                        ),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+                                            // Row 1: Icon, Title, Active Badge, Action Buttons
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(34.dp)
+                                                            .clip(RoundedCornerShape(9.dp))
+                                                            .background(
+                                                                if (isActive) SqlBlue.copy(alpha = 0.15f)
+                                                                else MaterialTheme.colorScheme.surfaceVariant
+                                                            ),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.Folder,
+                                                            contentDescription = null,
+                                                            tint = if (isActive) SqlBlue else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    }
 
-                                            Spacer(modifier = Modifier.width(10.dp))
+                                                    Spacer(modifier = Modifier.width(10.dp))
 
-                                            Column {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Text(
-                                                        text = dbName,
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold
-                                                    )
-                                                    if (isActive) {
-                                                        Spacer(modifier = Modifier.width(6.dp))
-                                                        Surface(
-                                                            shape = RoundedCornerShape(6.dp),
-                                                            color = SqlSuccess.copy(alpha = 0.18f)
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            modifier = Modifier.fillMaxWidth()
                                                         ) {
+                                                            val cleanDbName = dbName.removeSuffix(".db")
+                                                            val dynamicFontSize = when {
+                                                                cleanDbName.length > 24 -> 11.5.sp
+                                                                cleanDbName.length > 18 -> 12.5.sp
+                                                                cleanDbName.length > 13 -> 13.5.sp
+                                                                else -> 14.5.sp
+                                                            }
                                                             Text(
-                                                                text = "Activo",
-                                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                                    fontSize = 9.sp,
-                                                                    fontWeight = FontWeight.Bold
-                                                                ),
-                                                                color = SqlSuccess,
-                                                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                                text = cleanDbName,
+                                                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = dynamicFontSize),
+                                                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis,
+                                                                modifier = Modifier.weight(1f, fill = false)
                                                             )
+                                                            if (isActive) {
+                                                                Spacer(modifier = Modifier.width(6.dp))
+                                                                Surface(
+                                                                    shape = RoundedCornerShape(6.dp),
+                                                                    color = SqlSuccess.copy(alpha = 0.18f)
+                                                                ) {
+                                                                    Text(
+                                                                        text = "Activo",
+                                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                                            fontSize = 9.5.sp,
+                                                                            fontWeight = FontWeight.Bold
+                                                                        ),
+                                                                        color = SqlSuccess,
+                                                                        maxLines = 1,
+                                                                        softWrap = false,
+                                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                                    )
+                                                                }
+                                                            }
                                                         }
+
+                                                        val totalRows = tables.sumOf { it.rowCount }
+                                                        Text(
+                                                            text = if (tables.isNotEmpty()) {
+                                                                "${tables.size} tablas • $totalRows registros"
+                                                            } else {
+                                                                "0 tablas • En blanco"
+                                                            },
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
                                                     }
                                                 }
 
-                                                val totalRows = tables.sumOf { it.rowCount }
-                                                Text(
-                                                    text = if (tables.isNotEmpty()) {
-                                                        "${tables.size} tablas • $totalRows registros"
-                                                    } else {
-                                                        "Base de datos SQLite"
-                                                    },
-                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    IconButton(
+                                                        onClick = {
+                                                            renameTarget = dbName
+                                                            renameInputName = dbName.removeSuffix(".db")
+                                                        },
+                                                        modifier = Modifier.size(32.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.Edit,
+                                                            contentDescription = "Renombrar",
+                                                            modifier = Modifier.size(16.dp),
+                                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
 
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(
-                                                onClick = {
-                                                    renameTarget = dbName
-                                                    renameInputName = dbName.removeSuffix(".db")
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Edit,
-                                                    contentDescription = "Renombrar",
-                                                    modifier = Modifier.size(16.dp),
-                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
+                                                    if (onResetDb != null) {
+                                                        IconButton(
+                                                            onClick = { confirmResetTarget = dbName },
+                                                            modifier = Modifier
+                                                                .size(32.dp)
+                                                                .testTag("reset_db_${dbName}")
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Outlined.RestartAlt,
+                                                                contentDescription = "Restablecer a fábrica",
+                                                                modifier = Modifier.size(16.dp),
+                                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        }
+                                                    }
 
-                                            if (databases.size > 1) {
-                                                IconButton(
-                                                    onClick = { onDeleteDb(dbName) },
-                                                    modifier = Modifier.size(32.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Outlined.DeleteOutline,
-                                                        contentDescription = "Eliminar",
-                                                        modifier = Modifier.size(16.dp),
-                                                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                                                    )
+                                                    if (databases.size > 1 && !isActive) {
+                                                        IconButton(
+                                                            onClick = { onDeleteDb(dbName) },
+                                                            modifier = Modifier.size(32.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Outlined.DeleteOutline,
+                                                                contentDescription = "Eliminar",
+                                                                modifier = Modifier.size(16.dp),
+                                                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                                                            )
+                                                        }
+                                                    }
+
+                                                    IconButton(
+                                                        onClick = { toggleDatabaseTables(dbName) },
+                                                        modifier = Modifier.size(32.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = if (isExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                                                            contentDescription = "Ver tablas",
+                                                            modifier = Modifier.size(20.dp),
+                                                            tint = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
                                                 }
                                             }
 
-                                            IconButton(
-                                                onClick = { toggleDatabaseTables(dbName) },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (isExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
-                                                    contentDescription = "Ver tablas",
-                                                    modifier = Modifier.size(20.dp),
-                                                    tint = MaterialTheme.colorScheme.primary
-                                                )
+                                            // Quick button to activate if not active
+                                            if (!isActive) {
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                FilledTonalButton(
+                                                    onClick = {
+                                                        onSelectDb(dbName)
+                                                        onDismiss()
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth().height(34.dp),
+                                                    shape = RoundedCornerShape(10.dp)
+                                                ) {
+                                                    Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(15.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Tocar para activar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                                                }
                                             }
-                                        }
-                                    }
-
-                                    // Action to activate if not active
-                                    if (!isActive) {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        FilledTonalButton(
-                                            onClick = {
-                                                onSelectDb(dbName)
-                                                onDismiss()
-                                            },
-                                            modifier = Modifier.fillMaxWidth().height(34.dp),
-                                            shape = RoundedCornerShape(10.dp)
-                                        ) {
-                                            Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(15.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Abrir y trabajar en este proyecto", style = MaterialTheme.typography.labelSmall)
-                                        }
-                                    }
 
                                     // Expanded: Tables inside this database
                                     AnimatedVisibility(visible = isExpanded) {
@@ -584,7 +684,9 @@ fun ProjectsHubDialog(
                             }
                         }
                     }
-                } else {
+                }
+            }
+        } else {
                     // TAB 1: Create New Project with Rich Templates
                     Column(
                         modifier = Modifier
@@ -727,4 +829,46 @@ fun ProjectsHubDialog(
         },
         confirmButton = {}
     )
+
+    if (confirmResetTarget != null) {
+        val target = confirmResetTarget!!
+        AlertDialog(
+            onDismissRequest = { confirmResetTarget = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Outlined.RestartAlt,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Restablecer Base de Datos")
+                }
+            },
+            text = {
+                Text(
+                    "¿Deseas restaurar \"$target\" a su estado original de fábrica?\n\nSe restablecerán todas las tablas y registros originales de la plantilla (o se vaciará a 0 tablas si fue creada en blanco). Cualquier cambio manual se descartará.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmResetTarget = null
+                        onResetDb?.invoke(target)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                ) {
+                    Text("Restablecer")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmResetTarget = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
 }
