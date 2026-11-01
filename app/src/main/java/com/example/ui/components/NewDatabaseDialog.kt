@@ -24,11 +24,14 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DesignServices
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.LocalHospital
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.material.icons.outlined.TaskAlt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -85,9 +88,13 @@ fun NewDatabaseDialog(
 
     val templateOptions = remember {
         listOf(
+            Triple("facultad_ciencias", "Facultad de Ciencias & Tecnología (3 tablas)", Icons.Outlined.School),
+            Triple("cuba", "Cuba: Provincias & Cultura (3 tablas)", Icons.Outlined.Place),
             Triple("sample", "Tienda & Clientes (4 tablas)", Icons.Outlined.Storefront),
             Triple("ecommerce", "E-Commerce Completo (3 tablas)", Icons.Outlined.ShoppingCart),
-            Triple("university", "Universidad Académica (4 tablas)", Icons.Outlined.School)
+            Triple("university", "Universidad Académica (4 tablas)", Icons.Outlined.School),
+            Triple("projects", "Gestión de Proyectos (3 tablas)", Icons.Outlined.TaskAlt),
+            Triple("clinic", "Clínica & Citas Médicas (3 tablas)", Icons.Outlined.LocalHospital)
         )
     }
 

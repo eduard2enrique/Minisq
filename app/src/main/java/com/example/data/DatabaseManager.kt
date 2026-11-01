@@ -32,7 +32,7 @@ class DatabaseManager(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("minisql_db_templates", Context.MODE_PRIVATE)
 
-    private var currentDbName: String = "mi_base_de_datos.db"
+    private var currentDbName: String = "facultad_ciencias.db"
     private var activeDatabase: SQLiteDatabase? = null
 
     init {
@@ -40,10 +40,20 @@ class DatabaseManager(private val context: Context) {
     }
 
     private fun ensureInitialDatabase() {
-        val initialFile = File(dbDir, currentDbName)
-        if (!initialFile.exists()) {
-            createSampleDatabase(currentDbName)
-            prefs.edit().putString("template_$currentDbName", "sample").apply()
+        val facultadFile = File(dbDir, "facultad_ciencias.db")
+        if (!facultadFile.exists()) {
+            createSampleFacultadCiencias(facultadFile)
+            prefs.edit().putString("template_facultad_ciencias.db", "facultad_ciencias").apply()
+        }
+        val cubaFile = File(dbDir, "cuba_geografia.db")
+        if (!cubaFile.exists()) {
+            createSampleCuba(cubaFile)
+            prefs.edit().putString("template_cuba_geografia.db", "cuba").apply()
+        }
+        val storeFile = File(dbDir, "tienda_comercial.db")
+        if (!storeFile.exists()) {
+            createSampleStore(storeFile)
+            prefs.edit().putString("template_tienda_comercial.db", "sample").apply()
         }
     }
 
@@ -93,6 +103,8 @@ class DatabaseManager(private val context: Context) {
         if (file.exists()) return false
 
         when (template) {
+            "facultad_ciencias", "centro_estudiantil" -> createSampleFacultadCiencias(file)
+            "cuba" -> createSampleCuba(file)
             "ecommerce" -> createSampleEcommerce(file)
             "university" -> createSampleUniversity(file)
             "projects" -> createSampleProjects(file)
@@ -126,13 +138,15 @@ class DatabaseManager(private val context: Context) {
         // Determine template from saved prefs or name heuristics
         val storedTemplate = prefs.getString("template_$dbName", null)
         val template = storedTemplate ?: when {
+            dbName.contains("facultad", ignoreCase = true) || dbName.contains("centro", ignoreCase = true) || dbName.contains("estudiantil", ignoreCase = true) || dbName.contains("ciencia", ignoreCase = true) -> "facultad_ciencias"
+            dbName.contains("cuba", ignoreCase = true) -> "cuba"
             dbName.contains("ecommerce", ignoreCase = true) -> "ecommerce"
             dbName.contains("universidad", ignoreCase = true) || dbName.contains("university", ignoreCase = true) -> "university"
             dbName.contains("proyecto", ignoreCase = true) || dbName.contains("project", ignoreCase = true) -> "projects"
             dbName.contains("clinica", ignoreCase = true) || dbName.contains("clinic", ignoreCase = true) -> "clinic"
             dbName.startsWith("base_", ignoreCase = true) -> "empty"
             dbName.contains("mi_base_de_datos", ignoreCase = true) -> "sample"
-            else -> "sample"
+            else -> "facultad_ciencias"
         }
 
         if (file.exists()) {
@@ -140,6 +154,8 @@ class DatabaseManager(private val context: Context) {
         }
 
         when (template) {
+            "facultad_ciencias", "centro_estudiantil" -> createSampleFacultadCiencias(file)
+            "cuba" -> createSampleCuba(file)
             "ecommerce" -> createSampleEcommerce(file)
             "university" -> createSampleUniversity(file)
             "projects" -> createSampleProjects(file)
@@ -167,12 +183,16 @@ class DatabaseManager(private val context: Context) {
             activeDatabase = null
         }
         val deleted = file.delete()
+        if (deleted) {
+            prefs.edit().remove("template_$name").apply()
+        }
         val remaining = listDatabases()
         if (remaining.isNotEmpty()) {
             switchDatabase(remaining.first())
         } else {
-            createSampleDatabase("mi_base_de_datos.db")
-            switchDatabase("mi_base_de_datos.db")
+            val defaultFile = File(dbDir, "facultad_ciencias.db")
+            createSampleFacultadCiencias(defaultFile)
+            switchDatabase("facultad_ciencias.db")
         }
         return deleted
     }
@@ -191,8 +211,14 @@ class DatabaseManager(private val context: Context) {
             activeDatabase = null
         }
         val renamed = oldFile.renameTo(newFile)
-        if (renamed && currentDbName == oldName) {
-            switchDatabase(target)
+        if (renamed) {
+            val stored = prefs.getString("template_$oldName", null)
+            if (stored != null) {
+                prefs.edit().putString("template_$target", stored).remove("template_$oldName").apply()
+            }
+            if (currentDbName == oldName) {
+                switchDatabase(target)
+            }
         }
         return renamed
     }
@@ -836,20 +862,163 @@ class DatabaseManager(private val context: Context) {
             """.trimIndent())
 
             // Initial records (idempotent with INSERT OR IGNORE)
-            db.execSQL("INSERT OR IGNORE INTO clientes (nombre, email, ciudad, saldo) VALUES ('Ana Torres', 'ana@example.com', 'Madrid', 450.50);")
-            db.execSQL("INSERT OR IGNORE INTO clientes (nombre, email, ciudad, saldo) VALUES ('Carlos Ruiz', 'carlos@example.com', 'Barcelona', 120.00);")
-            db.execSQL("INSERT OR IGNORE INTO clientes (nombre, email, ciudad, saldo) VALUES ('Lucía Méndez', 'lucia@example.com', 'Valencia', 890.25);")
+            db.execSQL("""
+                INSERT OR IGNORE INTO clientes (id, nombre, email, ciudad, saldo) VALUES
+                (1, 'Ana Torres', 'ana@example.com', 'Madrid', 450.50),
+                (2, 'Carlos Ruiz', 'carlos@example.com', 'Barcelona', 120.00),
+                (3, 'Lucía Méndez', 'lucia@example.com', 'Valencia', 890.25),
+                (4, 'Eduardo Sanamé', 'eduardo@example.com', 'La Habana', 1250.00),
+                (5, 'Beatriz Gómez', 'beatriz@example.com', 'Sevilla', 310.75),
+                (6, 'Javier Delgado', 'javier@example.com', 'Bilbao', 65.20),
+                (7, 'Camila Fonseca', 'camila@example.com', 'Santiago de Cuba', 540.00),
+                (8, 'Marcos Alarcón', 'marcos@example.com', 'Málaga', 780.90);
+            """.trimIndent())
 
-            db.execSQL("INSERT OR IGNORE INTO productos (nombre, categoria, precio, stock) VALUES ('Laptop Pro 15', 'Electrónica', 1199.99, 12);")
-            db.execSQL("INSERT OR IGNORE INTO productos (nombre, categoria, precio, stock) VALUES ('Mouse Inalámbrico', 'Accesorios', 24.50, 45);")
-            db.execSQL("INSERT OR IGNORE INTO productos (nombre, categoria, precio, stock) VALUES ('Monitor 4K HDR', 'Electrónica', 349.00, 8);")
+            db.execSQL("""
+                INSERT OR IGNORE INTO productos (id, nombre, categoria, precio, stock) VALUES
+                (1, 'Laptop Pro 15', 'Electrónica', 1199.99, 12),
+                (2, 'Mouse Inalámbrico', 'Accesorios', 24.50, 45),
+                (3, 'Monitor 4K HDR', 'Electrónica', 349.00, 8),
+                (4, 'Teclado Mecánico RGB', 'Accesorios', 79.99, 25),
+                (5, 'Auriculares Cancelación Ruido', 'Audio', 189.00, 18),
+                (6, 'Webcam UltraHD 60fps', 'Video', 99.50, 30),
+                (7, 'Disco SSD NVMe 2TB', 'Almacenamiento', 145.00, 40),
+                (8, 'Silla Ergonómica Pro', 'Muebles', 229.00, 10),
+                (9, 'Cable USB-C Blindado 2m', 'Cables', 12.99, 100),
+                (10, 'Hub USB Multi-Puerto 8-en-1', 'Accesorios', 49.90, 22);
+            """.trimIndent())
 
-            db.execSQL("INSERT OR IGNORE INTO pedidos (cliente_id, fecha, estado, total) VALUES (1, '2026-10-18', 'Entregado', 1224.49);")
-            db.execSQL("INSERT OR IGNORE INTO pedidos (cliente_id, fecha, estado, total) VALUES (2, '2026-10-21', 'En proceso', 349.00);")
+            db.execSQL("""
+                INSERT OR IGNORE INTO pedidos (id, cliente_id, fecha, estado, total) VALUES
+                (1, 1, '2026-10-18', 'Entregado', 1224.49),
+                (2, 2, '2026-10-21', 'En proceso', 349.00),
+                (3, 3, '2026-10-24', 'Entregado', 268.99),
+                (4, 4, '2026-10-25', 'Enviado', 1344.99),
+                (5, 5, '2026-10-27', 'Entregado', 124.40),
+                (6, 6, '2026-10-28', 'Pendiente', 49.90),
+                (7, 7, '2026-10-29', 'Enviado', 538.00),
+                (8, 8, '2026-10-30', 'Entregado', 229.00);
+            """.trimIndent())
 
-            db.execSQL("INSERT OR IGNORE INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario) VALUES (1, 1, 1, 1199.99);")
-            db.execSQL("INSERT OR IGNORE INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario) VALUES (1, 2, 1, 24.50);")
-            db.execSQL("INSERT OR IGNORE INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario) VALUES (2, 3, 1, 349.00);")
+            db.execSQL("""
+                INSERT OR IGNORE INTO detalles_pedido (pedido_id, producto_id, cantidad, precio_unitario) VALUES
+                (1, 1, 1, 1199.99),
+                (1, 2, 1, 24.50),
+                (2, 3, 1, 349.00),
+                (3, 4, 1, 79.99),
+                (3, 5, 1, 189.00),
+                (4, 1, 1, 1199.99),
+                (4, 7, 1, 145.00),
+                (5, 2, 2, 24.50),
+                (5, 9, 2, 12.99),
+                (5, 10, 1, 49.90),
+                (6, 10, 1, 49.90),
+                (7, 3, 1, 349.00),
+                (7, 5, 1, 189.00),
+                (8, 8, 1, 229.00);
+            """.trimIndent())
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun createSampleCuba(file: File) {
+        val db = SQLiteDatabase.openOrCreateDatabase(file, null)
+        try {
+            db.execSQL("PRAGMA foreign_keys = ON;")
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS provincias (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL UNIQUE,
+                    capital TEXT NOT NULL,
+                    region TEXT NOT NULL,
+                    poblacion INTEGER NOT NULL,
+                    area_km2 REAL NOT NULL
+                );
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS lugares_interes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    provincia_id INTEGER NOT NULL,
+                    nombre TEXT NOT NULL,
+                    tipo TEXT NOT NULL,
+                    patrimonio_unesco INTEGER DEFAULT 0,
+                    FOREIGN KEY (provincia_id) REFERENCES provincias(id) ON DELETE CASCADE
+                );
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS platos_tradicionales (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL,
+                    tipo TEXT NOT NULL,
+                    ingrediente_principal TEXT NOT NULL,
+                    region_origen TEXT NOT NULL
+                );
+            """.trimIndent())
+
+            // Las 15 provincias y el municipio especial de Cuba
+            db.execSQL("""
+                INSERT OR IGNORE INTO provincias (id, nombre, capital, region, poblacion, area_km2) VALUES
+                (1, 'Pinar del Río', 'Pinar del Río', 'Occidental', 583000, 8884.5),
+                (2, 'Artemisa', 'Artemisa', 'Occidental', 514000, 4004.2),
+                (3, 'La Habana', 'La Habana', 'Occidental', 2137000, 728.3),
+                (4, 'Mayabeque', 'San José de las Lajas', 'Occidental', 384000, 3732.7),
+                (5, 'Matanzas', 'Matanzas', 'Occidental', 716000, 11798.6),
+                (6, 'Cienfuegos', 'Cienfuegos', 'Central', 406000, 4186.6),
+                (7, 'Villa Clara', 'Santa Clara', 'Central', 773000, 8413.1),
+                (8, 'Sancti Spíritus', 'Sancti Spíritus', 'Central', 465000, 6777.3),
+                (9, 'Ciego de Ávila', 'Ciego de Ávila', 'Central', 435000, 6910.4),
+                (10, 'Camagüey', 'Camagüey', 'Central', 767000, 15386.2),
+                (11, 'Las Tunas', 'Las Tunas', 'Oriental', 533000, 6595.3),
+                (12, 'Holguín', 'Holguín', 'Oriental', 1022000, 9215.8),
+                (13, 'Granma', 'Bayamo', 'Oriental', 819000, 8376.8),
+                (14, 'Santiago de Cuba', 'Santiago de Cuba', 'Oriental', 1045000, 6234.2),
+                (15, 'Guantánamo', 'Guantánamo', 'Oriental', 506000, 6186.2),
+                (16, 'Isla de la Juventud', 'Nueva Gerona', 'Especial', 83000, 2419.3);
+            """.trimIndent())
+
+            // Lugares de interés patrimoniales, naturales y culturales
+            db.execSQL("""
+                INSERT OR IGNORE INTO lugares_interes (provincia_id, nombre, tipo, patrimonio_unesco) VALUES
+                (3, 'El Capitolio Nacional', 'Monumento Nacional', 0),
+                (3, 'Castillo de los Tres Reyes del Morro', 'Fortaleza Colonial', 1),
+                (3, 'La Habana Vieja y sus Fortificaciones', 'Centro Histórico', 1),
+                (1, 'Valle de Viñales', 'Paisaje Cultural / Parque Nacional', 1),
+                (1, 'Cueva del Indio', 'Espeleológico y Natural', 0),
+                (5, 'Balneario de Varadero', 'Playa y Polo Turístico', 0),
+                (5, 'Cuevas de Bellamar', 'Monumento Nacional Espeleológico', 0),
+                (6, 'Centro Histórico de Cienfuegos', 'Arquitectura Colonial Neoclásica', 1),
+                (6, 'Palacio de Valle', 'Monumento Arquitectónico', 0),
+                (7, 'Monumento y Memorial Che Guevara', 'Sitio Histórico', 0),
+                (7, 'Cayo Santa María', 'Reserva Turística Costera', 0),
+                (8, 'Trinidad y Valle de los Ingenios', 'Ciudad Museo Colonial', 1),
+                (9, 'Jardines del Rey (Cayo Coco y Guillermo)', 'Parque Natural y Marino', 0),
+                (10, 'Centro Histórico de Camagüey', 'Ciudad Colonial', 1),
+                (12, 'Playa Guardalavaca', 'Playa y Arrecifes', 0),
+                (12, 'Parque Nacional Alejandro de Humboldt', 'Biodiversidad del Caribe', 1),
+                (13, 'Parque Nacional Desembarco del Granma', 'Monumento Natural y Marino', 1),
+                (14, 'Castillo de San Pedro de la Roca', 'Fortaleza Militar', 1),
+                (14, 'Basílica Santuario de El Cobre', 'Santuario Histórico y Religioso', 0),
+                (15, 'Viaducto La Farola', 'Maravilla de la Ingeniería Civil', 0),
+                (15, 'Yunque de Baracoa', 'Monumento Nacional', 0);
+            """.trimIndent())
+
+            // Platos y delicias gastronómicas tradicionales de Cuba
+            db.execSQL("""
+                INSERT OR IGNORE INTO platos_tradicionales (nombre, tipo, ingrediente_principal, region_origen) VALUES
+                ('Ropa Vieja', 'Plato Fuerte', 'Carne de Res Deshebrada', 'Nacional'),
+                ('Ajiaco Criollo', 'Guiso Tradicional', 'Viandas surtidas y carnes', 'Camagüey'),
+                ('Moros y Cristianos', 'Guarnición', 'Arroz y Frijoles Negros', 'Occidental'),
+                ('Congrí Oriental', 'Guarnición', 'Arroz y Frijoles Colorados', 'Oriental'),
+                ('Lechón Asado en Púa', 'Plato Fuerte', 'Cerdo criollo marinado en mojo', 'Nacional'),
+                ('Yuca con Mojo Criollo', 'Acompañamiento', 'Yuca hervida con ajo y naranja agria', 'Nacional'),
+                ('Tostones Rellenos', 'Entrante', 'Plátano verde frito con picadillo', 'Nacional'),
+                ('Tamal en Cazuela', 'Plato Tradicional', 'Maíz tierno rallado y cerdo', 'Central'),
+                ('Cucurucho de Baracoa', 'Postre Tradicional', 'Coco rallado, miel y frutas en yagua', 'Guantánamo'),
+                ('Casabe', 'Pan Tradicional Ancestral', 'Harina de Yuca tostada', 'Oriental');
+            """.trimIndent())
         } finally {
             db.close()
         }
@@ -886,6 +1055,103 @@ class DatabaseManager(private val context: Context) {
             db.execSQL("INSERT OR IGNORE INTO usuarios (usuario, rol) VALUES ('admin_root', 'administrador'), ('usuario1', 'cliente'), ('invitado', 'cliente');")
             db.execSQL("INSERT OR IGNORE INTO categorias (nombre) VALUES ('Hardware'), ('Software'), ('Servicios');")
             db.execSQL("INSERT OR IGNORE INTO articulos (categoria_id, nombre, precio) VALUES (1, 'Memoria RAM 32GB', 115.0), (1, 'Disco NVMe 1TB', 85.5), (2, 'Licencia IDE Pro', 199.0);")
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun createSampleFacultadCiencias(file: File) {
+        val db = SQLiteDatabase.openOrCreateDatabase(file, null)
+        try {
+            db.execSQL("PRAGMA foreign_keys = ON;")
+
+            // 1. Tabla de Profesores (12 registros con Prof. Eduardo Sanamé Durán)
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS profesores (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL,
+                    especialidad TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    departamento TEXT NOT NULL
+                );
+            """.trimIndent())
+
+            // 2. Tabla de Materias (12 registros: Informática, Datos, Física, Matemática y Ciencias Avanzadas)
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS materias (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL,
+                    codigo TEXT UNIQUE NOT NULL,
+                    creditos INTEGER NOT NULL,
+                    semestre INTEGER NOT NULL,
+                    profesor_id INTEGER,
+                    FOREIGN KEY (profesor_id) REFERENCES profesores(id) ON DELETE SET NULL
+                );
+            """.trimIndent())
+
+            // 3. Tabla de Estudiantes (12 registros relacionados)
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS estudiantes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre TEXT NOT NULL,
+                    matricula TEXT UNIQUE NOT NULL,
+                    materia_id INTEGER,
+                    promedio REAL NOT NULL,
+                    ano_carrera INTEGER NOT NULL,
+                    FOREIGN KEY (materia_id) REFERENCES materias(id) ON DELETE CASCADE
+                );
+            """.trimIndent())
+
+            // Inserción de 12 Profesores
+            db.execSQL("""
+                INSERT OR IGNORE INTO profesores (id, nombre, especialidad, email, departamento) VALUES
+                (1, 'Prof. Eduardo Sanamé Durán', 'Ciencias de Datos e Inteligencia Artificial', 'eduardo.saname@facultadciencias.edu', 'Informática y Computación'),
+                (2, 'Dra. Celia Méndez Batista', 'Física Cuántica y Mecánica Teórica', 'celia.mendez@facultadciencias.edu', 'Ciencias Exactas'),
+                (3, 'Dr. Alejandro Morales Peña', 'Matemática Discreta y Álgebra Superior', 'alejandro.morales@facultadciencias.edu', 'Matemáticas'),
+                (4, 'Ing. Roberto Navarro Silva', 'Ciberseguridad y Criptografía Aplicada', 'roberto.navarro@facultadciencias.edu', 'Ciberseguridad'),
+                (5, 'Dra. Mariana Valdés Cruz', 'Bioinformática y Genómica Computacional', 'mariana.valdes@facultadciencias.edu', 'Biotecnología'),
+                (6, 'Dr. Ernesto Fonseca Reyes', 'Robótica Autónoma y Sistemas Embebidos', 'ernesto.fonseca@facultadciencias.edu', 'Mecatrónica'),
+                (7, 'MSc. Beatriz Quintana León', 'Informática y Algoritmos Complejos', 'beatriz.quintana@facultadciencias.edu', 'Informática y Computación'),
+                (8, 'Dr. Carlos Daniel Osorio', 'Computación Cuántica y Nanociencias', 'carlos.osorio@facultadciencias.edu', 'Física Avanzada'),
+                (9, 'Dra. Yanet Salgado Padrón', 'Astrofísica y Modelado Planetario', 'yanet.salgado@facultadciencias.edu', 'Astronomía y Física'),
+                (10, 'Dr. Manuel Carballo Prieto', 'Redes Neuronales y Aprendizaje Profundo', 'manuel.carballo@facultadciencias.edu', 'Inteligencia Artificial'),
+                (11, 'MSc. Dayana Fuentes Rivas', 'Ingeniería de Software y Arquitectura Cloud', 'dayana.fuentes@facultadciencias.edu', 'Informática y Computación'),
+                (12, 'Dr. Guillermo Toledo Soto', 'Optimización Numérica y Métodos Cuantitativos', 'guillermo.toledo@facultadciencias.edu', 'Matemáticas');
+            """.trimIndent())
+
+            // Inserción de 12 Materias
+            db.execSQL("""
+                INSERT OR IGNORE INTO materias (id, nombre, codigo, creditos, semestre, profesor_id) VALUES
+                (1, 'Informática Fundamental', 'INF-101', 4, 1, 7),
+                (2, 'Ciencias de Datos', 'DAT-201', 5, 3, 1),
+                (3, 'Física Clásica y Mecánica', 'FIS-102', 4, 2, 2),
+                (4, 'Matemática Superior y Álgebra', 'MAT-103', 5, 1, 3),
+                (5, 'Inteligencia Artificial Avanzada', 'IA-301', 5, 4, 1),
+                (6, 'Ciberseguridad y Redes', 'SEC-202', 4, 3, 4),
+                (7, 'Robótica Autónoma', 'ROB-302', 4, 4, 6),
+                (8, 'Bioinformática Computacional', 'BIO-401', 4, 4, 5),
+                (9, 'Astrofísica Teórica y Observacional', 'AST-305', 4, 3, 9),
+                (10, 'Deep Learning y Visión por Computador', 'IA-402', 5, 5, 10),
+                (11, 'Computación en la Nube y DevOps', 'CLD-303', 4, 4, 11),
+                (12, 'Optimización y Métodos Numéricos', 'MAT-204', 4, 3, 12);
+            """.trimIndent())
+
+            // Inserción de 12 Estudiantes
+            db.execSQL("""
+                INSERT OR IGNORE INTO estudiantes (id, nombre, matricula, materia_id, promedio, ano_carrera) VALUES
+                (1, 'Gabriel Alonso Pérez', 'EST-2024-001', 2, 96.5, 3),
+                (2, 'Laura Martínez Gómez', 'EST-2024-002', 5, 98.0, 4),
+                (3, 'Carlos Javier Romero', 'EST-2025-003', 1, 89.0, 1),
+                (4, 'Amanda Torres Díaz', 'EST-2024-004', 3, 91.5, 2),
+                (5, 'Yordanis Vega Cruz', 'EST-2025-005', 4, 94.0, 1),
+                (6, 'Daniela Ramos Acosta', 'EST-2024-006', 6, 95.5, 3),
+                (7, 'Héctor Luis Domínguez', 'EST-2023-007', 7, 92.0, 4),
+                (8, 'Patricia Solís Blanco', 'EST-2023-008', 8, 97.2, 4),
+                (9, 'Javier Alejandro Suárez', 'EST-2024-009', 9, 93.5, 3),
+                (10, 'Camila Delgado Herrera', 'EST-2023-010', 10, 98.5, 5),
+                (11, 'Rodrigo Mendoza Gil', 'EST-2024-011', 11, 90.0, 4),
+                (12, 'Natalia Cordero Paz', 'EST-2025-012', 12, 94.8, 2);
+            """.trimIndent())
         } finally {
             db.close()
         }

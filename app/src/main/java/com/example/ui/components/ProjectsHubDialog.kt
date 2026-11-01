@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.LocalHospital
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.RestartAlt
@@ -125,6 +126,24 @@ fun ProjectsHubDialog(
                 iconColor = Color(0xFF94A3B8),
                 tables = emptyList(),
                 defaultProjectName = "mi_nueva_base"
+            ),
+            DatabaseTemplateInfo(
+                id = "facultad_ciencias",
+                title = "Facultad de Ciencias & Tecnología",
+                description = "Facultad académica con disciplinas avanzadas (Datos, IA, Ciberseguridad, Física), 12 profesores (Prof. Eduardo Sanamé Durán) y 12 estudiantes.",
+                icon = Icons.Outlined.School,
+                iconColor = Color(0xFF6366F1),
+                tables = listOf("profesores", "materias", "estudiantes"),
+                defaultProjectName = "facultad_ciencias"
+            ),
+            DatabaseTemplateInfo(
+                id = "cuba",
+                title = "Cuba: Provincias & Cultura",
+                description = "Geografía, 15 provincias y municipio especial, sitios patrimonio UNESCO, atractivos turísticos y gastronomía tradicional.",
+                icon = Icons.Outlined.Place,
+                iconColor = Color(0xFF0284C7),
+                tables = listOf("provincias", "lugares_interes", "platos_tradicionales"),
+                defaultProjectName = "cuba_geografia"
             ),
             DatabaseTemplateInfo(
                 id = "sample",
@@ -374,10 +393,10 @@ fun ProjectsHubDialog(
                                 placeholder = { Text("Buscar base de datos...", style = MaterialTheme.typography.bodySmall) },
                                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
                                 singleLine = true,
-                                textStyle = MaterialTheme.typography.bodySmall,
+                                textStyle = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(44.dp)
+                                    .heightIn(min = 52.dp)
                                     .padding(bottom = 8.dp),
                                 shape = RoundedCornerShape(10.dp),
                                 colors = OutlinedTextFieldDefaults.colors(

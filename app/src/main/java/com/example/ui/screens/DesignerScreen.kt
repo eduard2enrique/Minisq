@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,13 +31,17 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.CheckCircleOutline
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.ViewModule
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -134,6 +139,7 @@ data class NewColumnDraft(
 fun DesignerScreen(
     dbManager: DatabaseManager,
     onRefreshTables: () -> Unit,
+    onResetCurrentDb: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -148,6 +154,7 @@ fun DesignerScreen(
     // Dialog state
     var showNewTableDialog by remember { mutableStateOf(false) }
     var showConnectDialog by remember { mutableStateOf(false) }
+    var showResetConfirmDialog by remember { mutableStateOf(false) }
 
     fun loadSchemas() {
         isLoading = true
@@ -362,6 +369,21 @@ fun DesignerScreen(
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("Relación", style = MaterialTheme.typography.labelSmall)
             }
+
+            if (onResetCurrentDb != null) {
+                FilledTonalIconButton(
+                    onClick = { showResetConfirmDialog = true },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .testTag("designer_reset_db_btn")
+                ) {
+                    Icon(
+                        Icons.Outlined.RestartAlt,
+                        contentDescription = "Restablecer a fábrica",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
         }
 
         // FAB to add new table visually
@@ -396,6 +418,18 @@ fun DesignerScreen(
                     }
                 }
             },
+            onCreateTableAndContinue = { ddlSql ->
+                scope.launch {
+                    val result = dbManager.executeSql(ddlSql)
+                    if (result.isSuccess) {
+                        Toast.makeText(context, "Tabla creada. Puedes diseñar otra tabla.", Toast.LENGTH_SHORT).show()
+                        loadSchemas()
+                        onRefreshTables()
+                    } else {
+                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
             onDismiss = { showNewTableDialog = false }
         )
     }
@@ -416,6 +450,45 @@ fun DesignerScreen(
                 }
             },
             onDismiss = { showConnectDialog = false }
+        )
+    }
+
+    // Modal: Confirm Reset Database in Designer
+    if (showResetConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirmDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.RestartAlt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+            },
+            title = { Text("Restablecer Base de Datos") },
+            text = {
+                Text(
+                    "¿Deseas restaurar la base de datos activa a su estado original de fábrica?\n\nSe restablecerán las tablas y datos originales de la plantilla (o se vaciará a 0 tablas si fue creada en blanco). Los cambios manuales se descartarán.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetConfirmDialog = false
+                        onResetCurrentDb?.invoke()
+                        loadSchemas()
+                    }
+                ) {
+                    Text("Restablecer")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirmDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
         )
     }
 }
@@ -544,7 +617,7 @@ fun TableEntityCard(schema: TableSchemaDetail) {
                     Column {
                         schema.foreignKeys.forEach { fk ->
                             Text(
-                                text = "🔗 ${fk.fromColumn} ➔ ${fk.targetTable}(${fk.toColumn})",
+                                text = "🔗 ${fk.fromColumn} ➔ ${fk.targetTable}(🔑 ${fk.toColumn} [PK])",
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                 color = MaterialTheme.colorScheme.secondary
                             )
@@ -561,6 +634,7 @@ fun NewTableDesignerDialog(
     existingTables: List<String>,
     allSchemas: List<TableSchemaDetail> = emptyList(),
     onCreateTable: (ddlSql: String) -> Unit,
+    onCreateTableAndContinue: ((ddlSql: String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     var tableName by remember { mutableStateOf("") }
@@ -569,6 +643,18 @@ fun NewTableDesignerDialog(
             NewColumnDraft(name = "id", type = "INTEGER", isPk = true, notNull = true, isAutoIncrement = true),
             NewColumnDraft(name = "nombre", type = "TEXT", isPk = false, notNull = true),
             NewColumnDraft(name = "creado_en", type = "TEXT", defaultValue = "CURRENT_TIMESTAMP")
+        )
+    }
+
+    fun resetForm() {
+        tableName = ""
+        columns.clear()
+        columns.addAll(
+            listOf(
+                NewColumnDraft(name = "id", type = "INTEGER", isPk = true, notNull = true, isAutoIncrement = true),
+                NewColumnDraft(name = "nombre", type = "TEXT", isPk = false, notNull = true),
+                NewColumnDraft(name = "creado_en", type = "TEXT", defaultValue = "CURRENT_TIMESTAMP")
+            )
         )
     }
 
@@ -587,11 +673,13 @@ fun NewTableDesignerDialog(
             sb.toString()
         }.toMutableList()
 
-        // Foreign Key constraints
+        // Foreign Key constraints strictly referencing target table Primary Key
         columns.filter { it.isFk && it.fkTargetTable.isNotBlank() && it.name.isNotBlank() }.forEach { col ->
-            val targetCol = if (col.fkTargetColumn.isNotBlank()) col.fkTargetColumn else "id"
-            val onDelete = if (col.fkOnDelete.isNotBlank()) " ON DELETE ${col.fkOnDelete}" else ""
-            lines.add("    FOREIGN KEY (\"${col.name.trim()}\") REFERENCES \"${col.fkTargetTable}\"(\"$targetCol\")$onDelete")
+            val targetSchema = allSchemas.find { it.tableName == col.fkTargetTable }
+            val targetPk = if (col.fkTargetColumn.isNotBlank()) col.fkTargetColumn
+                           else (targetSchema?.columns?.find { it.isPrimaryKey }?.name ?: "id")
+            val onDelete = if (col.fkOnDelete.isNotBlank()) " ON DELETE ${col.fkOnDelete}" else " ON DELETE CASCADE"
+            lines.add("    FOREIGN KEY (\"${col.name.trim()}\") REFERENCES \"${col.fkTargetTable}\"(\"$targetPk\")$onDelete")
         }
 
         return "CREATE TABLE IF NOT EXISTS \"${if (cleanName.isNotBlank()) cleanName else "nueva_tabla"}\" (\n" +
@@ -985,9 +1073,11 @@ fun NewTableDesignerDialog(
                                                     onCheckedChange = { isChecked ->
                                                         if (colIndex >= 0) {
                                                             val defaultTarget = existingTables.firstOrNull() ?: ""
+                                                            val defaultTargetPk = allSchemas.find { it.tableName == defaultTarget }?.columns?.find { it.isPrimaryKey }?.name ?: "id"
                                                             columns[colIndex] = col.copy(
                                                                 isFk = isChecked,
-                                                                fkTargetTable = if (isChecked && col.fkTargetTable.isBlank()) defaultTarget else col.fkTargetTable
+                                                                fkTargetTable = if (isChecked && col.fkTargetTable.isBlank()) defaultTarget else col.fkTargetTable,
+                                                                fkTargetColumn = if (isChecked && col.fkTargetColumn.isBlank()) defaultTargetPk else col.fkTargetColumn
                                                             )
                                                         }
                                                     }
@@ -1006,7 +1096,11 @@ fun NewTableDesignerDialog(
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
                                             Column(modifier = Modifier.padding(8.dp)) {
-                                                Text("Vincular como Clave Foránea a:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(Icons.Outlined.Key, contentDescription = null, tint = SqlWarning, modifier = Modifier.size(13.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("Vincular FK estrictamente a la PK de:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                                }
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 var expandTargetTable by remember { mutableStateOf(false) }
                                                 Box {
@@ -1017,7 +1111,15 @@ fun NewTableDesignerDialog(
                                                     ) {
                                                         Icon(Icons.Outlined.Link, contentDescription = null, modifier = Modifier.size(15.dp))
                                                         Spacer(modifier = Modifier.width(6.dp))
-                                                        Text("Tabla destino: ${col.fkTargetTable.ifBlank { "Elegir tabla..." }}", style = MaterialTheme.typography.labelSmall)
+                                                        val targetSchema = allSchemas.find { it.tableName == col.fkTargetTable }
+                                                        val targetPkCol = col.fkTargetColumn.ifBlank {
+                                                            targetSchema?.columns?.find { it.isPrimaryKey }?.name ?: "id"
+                                                        }
+                                                        Text(
+                                                            if (col.fkTargetTable.isBlank()) "Elegir tabla destino..."
+                                                            else "${col.fkTargetTable} ➔ 🔑 $targetPkCol [PK]",
+                                                            style = MaterialTheme.typography.labelSmall
+                                                        )
                                                         Spacer(modifier = Modifier.width(4.dp))
                                                         Icon(Icons.Outlined.ArrowDropDown, contentDescription = null)
                                                     }
@@ -1027,11 +1129,15 @@ fun NewTableDesignerDialog(
                                                         onDismissRequest = { expandTargetTable = false }
                                                     ) {
                                                         existingTables.forEach { tbl ->
+                                                            val tblPk = allSchemas.find { it.tableName == tbl }?.columns?.find { it.isPrimaryKey }?.name ?: "id"
                                                             DropdownMenuItem(
-                                                                text = { Text(tbl) },
+                                                                text = { Text("$tbl ➔ 🔑 $tblPk [PK]") },
                                                                 onClick = {
                                                                     if (colIndex >= 0) {
-                                                                        columns[colIndex] = col.copy(fkTargetTable = tbl)
+                                                                        columns[colIndex] = col.copy(
+                                                                            fkTargetTable = tbl,
+                                                                            fkTargetColumn = tblPk
+                                                                        )
                                                                     }
                                                                     expandTargetTable = false
                                                                 }
@@ -1091,26 +1197,42 @@ fun NewTableDesignerDialog(
                         }
                     }
 
-                    // Pinned Bottom Actions
+                    // Permanently Anchored Bottom Action Bar: Always Elevated, Solid, and Visible Above Keyboard
                     Surface(
-                        tonalElevation = 6.dp,
-                        shadowElevation = 6.dp,
+                        tonalElevation = 8.dp,
+                        shadowElevation = 8.dp,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                        shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surface,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                .padding(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedButton(
-                                onClick = onDismiss,
-                                modifier = Modifier.weight(1f).height(46.dp),
+                                onClick = {
+                                    if (tableName.isNotBlank()) {
+                                        val sql = generateSql()
+                                        onCreateTableAndContinue?.invoke(sql)
+                                        resetForm()
+                                    }
+                                },
+                                enabled = tableName.isNotBlank() && columns.any { it.name.isNotBlank() },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("designer_save_and_add_another_btn"),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
-                                Text("Cancelar")
+                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Guardar ++", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
                             }
 
                             Button(
@@ -1120,12 +1242,15 @@ fun NewTableDesignerDialog(
                                     }
                                 },
                                 enabled = tableName.isNotBlank() && columns.any { it.name.isNotBlank() },
-                                modifier = Modifier.weight(1f).height(46.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(min = 48.dp)
+                                    .testTag("designer_save_table_btn"),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Crear Tabla", fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Guardar", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
                             }
                         }
                     }
@@ -1146,20 +1271,56 @@ fun ConnectRelationDialog(
         mutableStateOf(schemas.getOrNull(1)?.tableName ?: schemas.firstOrNull()?.tableName ?: "")
     }
 
-    val sourceCols = schemas.find { it.tableName == sourceTable }?.columns?.map { it.name } ?: emptyList()
-    val targetCols = schemas.find { it.tableName == targetTable }?.columns?.map { it.name } ?: emptyList()
+    val sourceSchema = schemas.find { it.tableName == sourceTable }
+    val targetSchema = schemas.find { it.tableName == targetTable }
 
-    var sourceCol by remember(sourceTable) { mutableStateOf(sourceCols.find { it.endsWith("_id", ignoreCase = true) } ?: sourceCols.firstOrNull() ?: "") }
-    var targetCol by remember(targetTable) { mutableStateOf(targetCols.find { it == "id" } ?: targetCols.firstOrNull() ?: "") }
+    val sourceCols = sourceSchema?.columns ?: emptyList()
+    val targetPkCols = targetSchema?.columns?.filter { it.isPrimaryKey } ?: emptyList()
+    val hasValidPk = targetPkCols.isNotEmpty()
+
+    var sourceCol by remember(sourceTable) {
+        mutableStateOf(
+            sourceCols.find { it.name.endsWith("_id", ignoreCase = true) }?.name
+                ?: sourceCols.firstOrNull()?.name ?: ""
+        )
+    }
+
+    var targetCol by remember(targetTable) {
+        mutableStateOf(
+            targetPkCols.firstOrNull()?.name
+                ?: targetSchema?.columns?.find { it.name.equals("id", ignoreCase = true) }?.name
+                ?: ""
+        )
+    }
 
     var expandSourceTable by remember { mutableStateOf(false) }
     var expandSourceCol by remember { mutableStateOf(false) }
     var expandTargetTable by remember { mutableStateOf(false) }
     var expandTargetCol by remember { mutableStateOf(false) }
 
+    val selectedSourceCol = sourceCols.find { it.name == sourceCol }
+    val selectedTargetCol = targetSchema?.columns?.find { it.name == targetCol }
+
+    val areTypesCompatible = remember(selectedSourceCol, selectedTargetCol) {
+        if (selectedSourceCol == null || selectedTargetCol == null) true
+        else {
+            val srcType = selectedSourceCol.type.uppercase()
+            val tgtType = selectedTargetCol.type.uppercase()
+            when {
+                srcType == tgtType -> true
+                (srcType.contains("INT") && tgtType.contains("INT")) -> true
+                (srcType.contains("CHAR") || srcType.contains("TEXT") || srcType.contains("CLOB")) &&
+                        (tgtType.contains("CHAR") || tgtType.contains("TEXT") || tgtType.contains("CLOB")) -> true
+                (srcType.contains("REAL") || srcType.contains("FLOAT") || srcType.contains("DOUB")) &&
+                        (tgtType.contains("REAL") || tgtType.contains("FLOAT") || tgtType.contains("DOUB")) -> true
+                else -> false
+            }
+        }
+    }
+
     val relationSql = remember(sourceTable, sourceCol, targetTable, targetCol) {
-        "-- Relación relacional:\n" +
-        "-- Clave foránea: $sourceTable.$sourceCol ➔ $targetTable.$targetCol\n" +
+        "-- Relación relacional (Integridad Referencial):\n" +
+        "-- Clave Foránea: \"$sourceTable\"(\"$sourceCol\") ➔ REFERENCES \"$targetTable\"(\"$targetCol\" [PK])\n" +
         "CREATE INDEX IF NOT EXISTS idx_${sourceTable}_${sourceCol} ON \"$sourceTable\"(\"$sourceCol\");"
     }
 
@@ -1169,7 +1330,7 @@ fun ConnectRelationDialog(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Vincular Relación (FK)")
+                Text("Vincular Relación (FK ➔ PK)")
             }
         },
         text = {
@@ -1180,7 +1341,7 @@ fun ConnectRelationDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    "Selecciona las tablas y los campos que componen la relación de clave foránea:",
+                    "En diseño relacional, un campo de Clave Foránea (FK) debe apuntar estrictamente a la Clave Primaria (PK) de la tabla referenciada:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1192,7 +1353,7 @@ fun ConnectRelationDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
-                        Text("1. Tabla Origen (Donde reside la FK):", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                        Text("1. Tabla Origen (Donde reside el campo FK):", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1229,16 +1390,31 @@ fun ConnectRelationDialog(
                                     shape = RoundedCornerShape(8.dp),
                                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                 ) {
-                                    Text(sourceCol.ifBlank { "Columna..." }, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(
+                                        if (sourceCol.isBlank()) "Columna FK..."
+                                        else "$sourceCol (${selectedSourceCol?.type ?: ""})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Icon(Icons.Outlined.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
                                 }
                                 DropdownMenu(expanded = expandSourceCol, onDismissRequest = { expandSourceCol = false }) {
-                                    sourceCols.forEach { colName ->
+                                    sourceCols.forEach { col ->
+                                        val isSuggestedFk = col.name.endsWith("_id", ignoreCase = true)
                                         DropdownMenuItem(
-                                            text = { Text(colName) },
+                                            text = {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    if (isSuggestedFk) {
+                                                        Icon(Icons.Outlined.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(14.dp))
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                    }
+                                                    Text("${col.name} (${col.type})")
+                                                }
+                                            },
                                             onClick = {
-                                                sourceCol = colName
+                                                sourceCol = col.name
                                                 expandSourceCol = false
                                             }
                                         )
@@ -1249,14 +1425,23 @@ fun ConnectRelationDialog(
                     }
                 }
 
-                // 2. Target Table & Column
+                // 2. Target Table & Column (Strict PK only)
                 Surface(
                     shape = RoundedCornerShape(12.dp),
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
-                        Text("2. Apunta a Tabla Destino (Clave Primaria PK):", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Key, contentDescription = null, tint = SqlWarning, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                "2. Tabla Destino (Apunta obligatoriamente a PK):",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                         Spacer(modifier = Modifier.height(6.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1285,30 +1470,98 @@ fun ConnectRelationDialog(
                                 }
                             }
 
-                            // Target Column Dropdown
+                            // Target Column Dropdown - RESTRICTED STRICTLY TO PRIMARY KEYS
                             Box(modifier = Modifier.weight(1f)) {
                                 FilledTonalButton(
-                                    onClick = { expandTargetCol = true },
+                                    onClick = {
+                                        if (hasValidPk) expandTargetCol = true
+                                    },
+                                    enabled = hasValidPk,
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(8.dp),
                                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                 ) {
-                                    Text(targetCol.ifBlank { "Columna..." }, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(Icons.Outlined.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Text(
+                                        if (!hasValidPk) "Sin PK!"
+                                        else "🔑 $targetCol [PK]",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (targetPkCols.size > 1) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(Icons.Outlined.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    }
                                 }
-                                DropdownMenu(expanded = expandTargetCol, onDismissRequest = { expandTargetCol = false }) {
-                                    targetCols.forEach { colName ->
-                                        DropdownMenuItem(
-                                            text = { Text(colName) },
-                                            onClick = {
-                                                targetCol = colName
-                                                expandTargetCol = false
-                                            }
-                                        )
+
+                                if (targetPkCols.size > 1) {
+                                    DropdownMenu(expanded = expandTargetCol, onDismissRequest = { expandTargetCol = false }) {
+                                        targetPkCols.forEach { col ->
+                                            DropdownMenuItem(
+                                                text = { Text("🔑 ${col.name} (${col.type}) [PK]") },
+                                                onClick = {
+                                                    targetCol = col.name
+                                                    expandTargetCol = false
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
+                        }
+
+                        // Warning if target table has NO primary key
+                        if (!hasValidPk) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        "La tabla '$targetTable' no tiene Clave Primaria (PK). No es posible crear una relación FK válida hacia ella.",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Type Compatibility Feedback
+                if (hasValidPk && selectedSourceCol != null && selectedTargetCol != null) {
+                    Surface(
+                        color = if (areTypesCompatible) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.65f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (areTypesCompatible) Icons.Outlined.CheckCircleOutline else Icons.Outlined.WarningAmber,
+                                contentDescription = null,
+                                tint = if (areTypesCompatible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (areTypesCompatible)
+                                    "✓ Tipos compatibles: ${selectedSourceCol.name} (${selectedSourceCol.type}) ➔ 🔑 ${selectedTargetCol.name} (${selectedTargetCol.type}) [PK]"
+                                else
+                                    "⚠️ Discrepancia de tipos: '${selectedSourceCol.name}' es ${selectedSourceCol.type} pero '${selectedTargetCol.name}' es ${selectedTargetCol.type}",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = if (areTypesCompatible) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer
+                            )
                         }
                     }
                 }
@@ -1335,11 +1588,11 @@ fun ConnectRelationDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (sourceTable.isNotBlank() && sourceCol.isNotBlank() && targetTable.isNotBlank() && targetCol.isNotBlank()) {
+                    if (sourceTable.isNotBlank() && sourceCol.isNotBlank() && targetTable.isNotBlank() && targetCol.isNotBlank() && hasValidPk) {
                         onConnect(sourceTable, sourceCol, targetTable, targetCol)
                     }
                 },
-                enabled = sourceTable.isNotBlank() && sourceCol.isNotBlank() && targetTable.isNotBlank() && targetCol.isNotBlank()
+                enabled = sourceTable.isNotBlank() && sourceCol.isNotBlank() && targetTable.isNotBlank() && targetCol.isNotBlank() && hasValidPk && (sourceTable != targetTable || sourceCol != targetCol)
             ) {
                 Text("Vincular Relación")
             }
@@ -1349,3 +1602,4 @@ fun ConnectRelationDialog(
         }
     )
 }
+

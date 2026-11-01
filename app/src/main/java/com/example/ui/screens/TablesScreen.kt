@@ -108,6 +108,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.example.data.DatabaseManager
 import com.example.model.ColumnInfo
 import com.example.model.SqlExecutionResult
+import com.example.ui.components.AutoResizeText
 import com.example.model.TableSchemaDetail
 import com.example.model.TableSummary
 import com.example.ui.theme.SqlWarning
@@ -337,7 +338,7 @@ fun TablesScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth(0.85f)
-                            .height(44.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("empty_state_sql_btn")
                     ) {
                         Text(
@@ -368,10 +369,10 @@ fun TablesScreen(
                         placeholder = { Text("Buscar tablas en ${activeDbName.removeSuffix(".db")}...", style = MaterialTheme.typography.bodySmall) },
                         leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
                         singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall,
+                        textStyle = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .heightIn(min = 52.dp)
                             .padding(end = 8.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -483,17 +484,13 @@ fun TablesScreen(
                     }
                     Spacer(modifier = Modifier.width(2.dp))
                     Column(modifier = Modifier.weight(1f, fill = false)) {
-                        val dynamicTableFontSize = when {
-                            tableName.length > 22 -> 12.sp
-                            tableName.length > 15 -> 14.sp
-                            else -> 16.sp
-                        }
-                        Text(
+                        AutoResizeText(
                             text = tableName,
-                            style = MaterialTheme.typography.titleMedium.copy(fontSize = dynamicTableFontSize),
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            minFontSize = 11.sp,
+                            targetFontSize = 16.sp
                         )
                         Text(
                             text = "${tableDataResult?.rows?.size ?: 0} registros",
@@ -505,22 +502,11 @@ fun TablesScreen(
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    FilledTonalButton(
-                        onClick = { showInsertRowDialog = true },
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp)
-                    ) {
-                        Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("+ Fila", style = MaterialTheme.typography.labelSmall)
-                    }
-
-                    IconButton(
-                        onClick = { loadTableData(tableName, showFeedback = true) },
-                        modifier = Modifier.testTag("reload_table_data_btn")
-                    ) {
-                        Icon(Icons.Outlined.Refresh, contentDescription = "Recargar datos de la tabla")
-                    }
+                IconButton(
+                    onClick = { loadTableData(tableName, showFeedback = true) },
+                    modifier = Modifier.testTag("reload_table_data_btn")
+                ) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = "Recargar datos de la tabla")
                 }
             }
 
@@ -735,12 +721,13 @@ fun TablesScreen(
                                                             )
                                                             Spacer(modifier = Modifier.width(3.dp))
                                                         }
-                                                        Text(
+                                                        AutoResizeText(
                                                             text = col,
                                                             fontWeight = FontWeight.Bold,
                                                             modifier = Modifier.weight(1f, fill = false),
                                                             maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis,
+                                                            minFontSize = 9.sp,
+                                                            targetFontSize = 12.sp,
                                                             style = MaterialTheme.typography.bodySmall
                                                         )
                                                         if (colInfo != null) {
@@ -765,7 +752,7 @@ fun TablesScreen(
                                             // Rows
                                             LazyColumn(
                                                 modifier = Modifier.weight(1f),
-                                                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 20.dp)
+                                                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 80.dp)
                                             ) {
                                                 itemsIndexed(data.rows) { idx, row ->
                                                     val isSelected = selectedRowIndices.contains(idx)
@@ -805,12 +792,13 @@ fun TablesScreen(
 
                                                         Text("${idx + 1}", modifier = Modifier.width(36.dp), style = MaterialTheme.typography.bodySmall)
                                                         row.forEach { valStr ->
-                                                            Text(
+                                                            AutoResizeText(
                                                                 text = valStr,
                                                                 modifier = Modifier.width(130.dp).padding(horizontal = 4.dp),
                                                                 style = MaterialTheme.typography.bodySmall,
                                                                 maxLines = 2,
-                                                                overflow = TextOverflow.Ellipsis
+                                                                minFontSize = 9.sp,
+                                                                targetFontSize = 12.sp
                                                             )
                                                         }
                                                         // Row action buttons: Edit & Delete
@@ -916,33 +904,20 @@ fun TablesScreen(
                                         }
                                     }
 
-                                    // Barra limpia de resumen y acción de inserción rápida
+                                    // Barra limpia de resumen de datos (el botón único para añadir registros es el FAB flotante)
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(top = 8.dp, bottom = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                            .padding(top = 8.dp, bottom = 4.dp, start = 4.dp, end = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
                                             text = "${data.rows.size} filas • ${data.columns.size} columnas",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f, fill = false)
+                                            overflow = TextOverflow.Ellipsis
                                         )
-
-                                        FilledTonalButton(
-                                            onClick = { showInsertRowDialog = true },
-                                            modifier = Modifier.height(34.dp).testTag("bottom_insert_row_btn"),
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp)
-                                        ) {
-                                            Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Nueva Fila", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
-                                        }
                                     }
                                 }
 
@@ -1254,81 +1229,79 @@ fun TablesScreen(
                             }
                         }
 
-                        Text(
-                            text = "Rellena los valores de los campos. Las claves foráneas y fechas cuentan con ayudantes automáticos.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Campos del esquema (${schema.columns.size}):",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-
-                            FilledTonalButton(
-                                onClick = {
-                                    val randomNum = (10..99).random()
-                                    schema.columns.forEach { col ->
-                                        val lower = col.name.lowercase()
-                                        val isAutoPk = col.isPrimaryKey && col.type.contains("INT", ignoreCase = true)
-                                        if (!isAutoPk) {
-                                            val generated = when {
-                                                lower.contains("email") || lower.contains("correo") -> "usuario$randomNum@ejemplo.com"
-                                                lower.contains("nom") || lower.contains("name") -> listOf("Ana Morales", "Carlos Ruiz", "Lucía Sanz", "Javier Soto", "Marta Gil").random()
-                                                lower.contains("ciudad") || lower.contains("city") -> listOf("Madrid", "Barcelona", "Valencia", "Sevilla", "Bilbao").random()
-                                                lower.contains("precio") || lower.contains("saldo") || lower.contains("costo") || lower.contains("total") || lower.contains("valor") || lower.contains("presupuesto") -> "${(15..450).random()}.${(10..99).random()}"
-                                                lower.contains("stock") || lower.contains("cant") || lower.contains("edad") || lower.contains("credito") -> "${(1..50).random()}"
-                                                lower.contains("fecha") || lower.contains("date") -> SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-                                                lower.contains("estado") || lower.contains("status") -> listOf("Activo", "Pendiente", "Completado").random()
-                                                lower.contains("rol") -> listOf("cliente", "admin", "editor").random()
-                                                lower.contains("prioridad") -> listOf("Alta", "Media", "Baja").random()
-                                                lower.contains("telefono") || lower.contains("phone") -> "+34 600 ${(100000..999999).random()}"
-                                                lower.contains("tit") || lower.contains("desc") -> "Registro de prueba #$randomNum"
-                                                col.type.contains("INT", ignoreCase = true) -> "$randomNum"
-                                                col.type.contains("REAL", ignoreCase = true) -> "$randomNum.50"
-                                                else -> "Valor $randomNum"
-                                            }
-                                            inputValues[col.name] = generated
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.height(32.dp).testTag("magic_fill_button"),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.AutoAwesome,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "⚡ Rellenar datos demo",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f, fill = true)
+                                .weight(1f)
                                 .verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            Text(
+                                text = "Rellena los valores de los campos. Las claves foráneas y fechas cuentan con ayudantes automáticos.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Campos del esquema (${schema.columns.size}):",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                FilledTonalButton(
+                                    onClick = {
+                                        val randomNum = (10..99).random()
+                                        schema.columns.forEach { col ->
+                                            val lower = col.name.lowercase()
+                                            val isAutoPk = col.isPrimaryKey && col.type.contains("INT", ignoreCase = true)
+                                            if (!isAutoPk) {
+                                                val generated = when {
+                                                    lower.contains("email") || lower.contains("correo") -> "usuario$randomNum@ejemplo.com"
+                                                    lower.contains("nom") || lower.contains("name") -> listOf("Ana Morales", "Carlos Ruiz", "Lucía Sanz", "Javier Soto", "Marta Gil").random()
+                                                    lower.contains("ciudad") || lower.contains("city") -> listOf("Madrid", "Barcelona", "Valencia", "Sevilla", "Bilbao").random()
+                                                    lower.contains("precio") || lower.contains("saldo") || lower.contains("costo") || lower.contains("total") || lower.contains("valor") || lower.contains("presupuesto") -> "${(15..450).random()}.${(10..99).random()}"
+                                                    lower.contains("stock") || lower.contains("cant") || lower.contains("edad") || lower.contains("credito") -> "${(1..50).random()}"
+                                                    lower.contains("fecha") || lower.contains("date") -> SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                                                    lower.contains("estado") || lower.contains("status") -> listOf("Activo", "Pendiente", "Completado").random()
+                                                    lower.contains("rol") -> listOf("cliente", "admin", "editor").random()
+                                                    lower.contains("prioridad") -> listOf("Alta", "Media", "Baja").random()
+                                                    lower.contains("telefono") || lower.contains("phone") -> "+34 600 ${(100000..999999).random()}"
+                                                    lower.contains("tit") || lower.contains("desc") -> "Registro de prueba #$randomNum"
+                                                    col.type.contains("INT", ignoreCase = true) -> "$randomNum"
+                                                    col.type.contains("REAL", ignoreCase = true) -> "$randomNum.50"
+                                                    else -> "Valor $randomNum"
+                                                }
+                                                inputValues[col.name] = generated
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.heightIn(min = 36.dp).testTag("magic_fill_button"),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.AutoAwesome,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "⚡ Rellenar datos demo",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
                             schema.columns.forEach { col ->
                                 val isAutoPk = col.isPrimaryKey && col.type.contains("INT", ignoreCase = true)
                                 val fk = schema.foreignKeys.find { it.fromColumn == col.name }
@@ -1376,7 +1349,7 @@ fun TablesScreen(
                                                     },
                                                     label = { Text("Hoy", style = MaterialTheme.typography.labelSmall) },
                                                     leadingIcon = { Icon(Icons.Outlined.Today, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                                                    modifier = Modifier.height(28.dp),
+                                                    modifier = Modifier.heightIn(min = 32.dp),
                                                     colors = AssistChipDefaults.assistChipColors(
                                                         containerColor = MaterialTheme.colorScheme.primaryContainer
                                                     )
@@ -1465,17 +1438,15 @@ fun TablesScreen(
                                         lineHeight = 16.sp
                                     ),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier
-                                        .padding(10.dp)
-                                        .verticalScroll(rememberScrollState())
+                                    modifier = Modifier.padding(10.dp)
                                 )
                             }
                         }
 
-                        // Permanently Anchored Bottom Action Bar: Always Elevated, Solid, and Visible
+                        // Permanently Anchored Bottom Action Bar: Always Elevated, Solid, and Visible Above Keyboard
                         Surface(
                             color = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 6.dp,
+                            tonalElevation = 8.dp,
                             shadowElevation = 8.dp,
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                             shape = RoundedCornerShape(12.dp),
@@ -1507,12 +1478,14 @@ fun TablesScreen(
                                     },
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(44.dp)
+                                        .heightIn(min = 48.dp)
                                         .testTag("save_and_add_another_btn"),
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     enabled = !isInserting
                                 ) {
-                                    Text("+ Guardar y Otro", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Guardar ++", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                 }
 
                                 Button(
@@ -1532,12 +1505,14 @@ fun TablesScreen(
                                     },
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(44.dp)
+                                        .heightIn(min = 48.dp)
                                         .testTag("save_row_btn"),
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     enabled = !isInserting
                                 ) {
-                                    Text("Guardar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Guardar", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
                                 }
                             }
                         }
@@ -1628,22 +1603,19 @@ fun TablesScreen(
                             }
                         }
 
-                        Text(
-                            text = "Modifica los campos del registro. La clave primaria '$pkCol' ($pkVal) se utiliza para identificar la fila única.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Scrollable Input Fields Container
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f, fill = false)
+                                .weight(1f)
                                 .verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            Text(
+                                text = "Modifica los campos del registro. La clave primaria '$pkCol' ($pkVal) se utiliza para identificar la fila única.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
                             schema.columns.forEach { col ->
                                 val isPk = col.isPrimaryKey
                                 val currentValue = editInputValues[col.name] ?: ""
@@ -1739,12 +1711,12 @@ fun TablesScreen(
                                     onClick = { editingRowIndex = null },
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(44.dp)
+                                        .heightIn(min = 50.dp)
                                         .testTag("cancel_edit_row_btn"),
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     enabled = !isUpdating
                                 ) {
-                                    Text("Cancelar", style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("Cancelar", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
                                 }
 
                                 Button(
@@ -1764,14 +1736,14 @@ fun TablesScreen(
                                     },
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(44.dp)
+                                        .heightIn(min = 50.dp)
                                         .testTag("save_edit_row_btn"),
-                                    shape = RoundedCornerShape(10.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     enabled = !isUpdating
                                 ) {
-                                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Guardar Cambios", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text("Guardar Cambios", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
                                 }
                             }
                         }
@@ -1931,32 +1903,55 @@ fun TablesScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
+                        // Pinned Action Bar
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 6.dp,
+                            shadowElevation = 6.dp,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
                         ) {
-                            TextButton(onClick = { showAddColumnDialog = false }) {
-                                Text("Cancelar")
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        val res = dbManager.addColumn(tName, newColName, newColType, newColNotNull, newColDefault)
-                                        Toast.makeText(context, res.message, if (res.isSuccess) Toast.LENGTH_SHORT else Toast.LENGTH_LONG).show()
-                                        if (res.isSuccess) {
-                                            loadTableData(tName)
-                                            onRefreshTables()
-                                            showAddColumnDialog = false
-                                        }
-                                    }
-                                },
-                                enabled = newColName.isNotBlank(),
-                                shape = RoundedCornerShape(10.dp)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Crear Columna")
+                                OutlinedButton(
+                                    onClick = { showAddColumnDialog = false },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Cancelar", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            val res = dbManager.addColumn(tName, newColName, newColType, newColNotNull, newColDefault)
+                                            Toast.makeText(context, res.message, if (res.isSuccess) Toast.LENGTH_SHORT else Toast.LENGTH_LONG).show()
+                                            if (res.isSuccess) {
+                                                loadTableData(tName)
+                                                onRefreshTables()
+                                                showAddColumnDialog = false
+                                            }
+                                        }
+                                    },
+                                    enabled = newColName.isNotBlank(),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Crear Columna", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }

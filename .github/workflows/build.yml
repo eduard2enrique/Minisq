@@ -23,6 +23,9 @@ jobs:
     - name: Permisos de ejecución a gradlew
       run: chmod +x gradlew || true
 
+    - name: Preparar variables de entorno (.env)
+      run: cp .env.example .env 2>/dev/null || touch .env
+
     - name: Generar Keystore de Depuración
       run: |
         keytool -genkey -v -keystore debug.keystore -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US"
@@ -33,5 +36,5 @@ jobs:
     - name: Guardar el APK
       uses: actions/upload-artifact@v4
       with:
-        name: MiniSQL-Pro-1.0-APK
+        name: MiniSQL-Pro-1.1-APK
         path: app/build/outputs/apk/debug/*.apk

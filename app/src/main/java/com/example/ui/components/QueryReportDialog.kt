@@ -404,13 +404,13 @@ fun QueryReportDialog(
                         onClick = { shareReport() },
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("share_report_btn"),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Icon(imageVector = Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Compartir", style = MaterialTheme.typography.labelMedium)
+                        Text("Compartir", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                     }
 
                     Button(
@@ -419,7 +419,7 @@ fun QueryReportDialog(
                         },
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("save_report_file_btn"),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
@@ -428,17 +428,17 @@ fun QueryReportDialog(
                     ) {
                         Icon(imageVector = Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Guardar", style = MaterialTheme.typography.labelMedium)
+                        Text("Guardar", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                     }
 
                     OutlinedButton(
                         onClick = { copyReportToClipboard() },
                         modifier = Modifier
-                            .height(44.dp)
+                            .heightIn(min = 48.dp)
                             .testTag("copy_report_clipboard_btn"),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(imageVector = Icons.Outlined.ContentCopy, contentDescription = "Copiar", modifier = Modifier.size(16.dp))
+                        Icon(imageVector = Icons.Outlined.ContentCopy, contentDescription = "Copiar", modifier = Modifier.size(18.dp))
                     }
                 }
             }

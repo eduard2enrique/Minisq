@@ -85,6 +85,7 @@ import com.example.data.SqlScriptHelper
 import com.example.model.QueryHistoryItem
 import com.example.model.SqlExecutionResult
 import com.example.model.TableSummary
+import com.example.ui.components.AutoResizeText
 import com.example.ui.components.LoadSqlOptionsDialog
 import com.example.ui.components.QueryHistoryDialog
 import com.example.ui.components.QueryReportDialog
@@ -120,7 +121,11 @@ fun QueryScreen(
     var sqlQuery by remember {
         mutableStateOf(
             TextFieldValue(
-                text = "SELECT id, nombre, email, ciudad, saldo\nFROM clientes\nORDER BY id ASC;",
+                text = "SELECT e.matricula, e.nombre AS estudiante, m.nombre AS materia, p.nombre AS profesor, e.promedio\n" +
+                        "FROM estudiantes e\n" +
+                        "INNER JOIN materias m ON e.materia_id = m.id\n" +
+                        "INNER JOIN profesores p ON m.profesor_id = p.id\n" +
+                        "ORDER BY e.promedio DESC;",
                 selection = TextRange(0)
             )
         )
@@ -272,7 +277,15 @@ fun QueryScreen(
 
     // Quick action templates
     fun insertTemplate(type: String) {
-        val targetTable = tables.firstOrNull()?.name ?: "clientes"
+        val tableNames = tables.map { it.name }
+        val hasAcademic = tableNames.contains("estudiantes") || tableNames.contains("materias") || tableNames.contains("profesores")
+        val targetTable = when {
+            tableNames.contains("estudiantes") -> "estudiantes"
+            tableNames.contains("profesores") -> "profesores"
+            tableNames.contains("materias") -> "materias"
+            else -> tables.firstOrNull()?.name ?: "estudiantes"
+        }
+
         val snippet = when (type) {
             "create" -> """
                 CREATE TABLE IF NOT EXISTS nueva_tabla (
@@ -282,27 +295,59 @@ fun QueryScreen(
                     creado_en TEXT DEFAULT CURRENT_TIMESTAMP
                 );
             """.trimIndent()
-            "insert" -> "INSERT INTO $targetTable (nombre, email, ciudad, saldo)\nVALUES ('Nuevo Usuario', 'usuario@correo.com', 'Madrid', 150.0);"
-            "select" -> "SELECT * FROM $targetTable\nLIMIT 10;"
-            "join" -> """
-                SELECT
-                    p.id,
-                    c.nombre,
-                    p.fecha,
-                    p.total
-                FROM pedidos p
-                INNER JOIN clientes c
-                    ON p.cliente_id = c.id
-                ORDER BY p.id DESC;
-            """.trimIndent()
-            "group" -> """
-                SELECT
-                    categoria,
-                    COUNT(*) AS cantidad,
-                    ROUND(AVG(precio), 2) AS precio_medio
-                FROM productos
-                GROUP BY categoria;
-            """.trimIndent()
+            "insert" -> if (hasAcademic) {
+                "INSERT OR IGNORE INTO estudiantes (nombre, matricula, materia_id, promedio, ano_carrera)\nVALUES ('Nuevo Alumno', 'EST-2026-${(100..999).random()}', 2, 95.0, 1);"
+            } else {
+                "INSERT INTO $targetTable (nombre, email, ciudad, saldo)\nVALUES ('Nuevo Registro', 'correo@ejemplo.com', 'Habana', 150.0);"
+            }
+            "select" -> "SELECT * FROM $targetTable\nORDER BY 1 ASC\nLIMIT 10;"
+            "join" -> if (hasAcademic) {
+                """
+                    SELECT
+                        e.matricula,
+                        e.nombre AS estudiante,
+                        m.nombre AS materia,
+                        p.nombre AS profesor,
+                        e.promedio
+                    FROM estudiantes e
+                    INNER JOIN materias m ON e.materia_id = m.id
+                    INNER JOIN profesores p ON m.profesor_id = p.id
+                    ORDER BY e.promedio DESC;
+                """.trimIndent()
+            } else {
+                """
+                    SELECT
+                        p.id,
+                        c.nombre,
+                        p.fecha,
+                        p.total
+                    FROM pedidos p
+                    INNER JOIN clientes c
+                        ON p.cliente_id = c.id
+                    ORDER BY p.id DESC;
+                """.trimIndent()
+            }
+            "group" -> if (hasAcademic) {
+                """
+                    SELECT
+                        m.nombre AS materia,
+                        COUNT(e.id) AS total_estudiantes,
+                        ROUND(AVG(e.promedio), 2) AS promedio_materia
+                    FROM materias m
+                    LEFT JOIN estudiantes e ON m.id = e.materia_id
+                    GROUP BY m.id, m.nombre
+                    ORDER BY promedio_materia DESC;
+                """.trimIndent()
+            } else {
+                """
+                    SELECT
+                        categoria,
+                        COUNT(*) AS cantidad,
+                        ROUND(AVG(precio), 2) AS precio_medio
+                    FROM productos
+                    GROUP BY categoria;
+                """.trimIndent()
+            }
             else -> "SELECT * FROM $targetTable;"
         }
         sqlQuery = TextFieldValue(snippet, TextRange(snippet.length))
@@ -474,29 +519,28 @@ fun QueryScreen(
                 }
             }
 
-            // Row 2: Secondary Tool Strip (Balanced 4-button row with AI Studio drawn outline icons)
+            // Row 2 & 3: Modern 2x2 Action Tools Matrix (Spacious 48dp height, no truncation, modern Material 3)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 1. Ejemplos (AI Studio Sparkle / AutoAwesome drawn outline)
+                // 1. Ejemplos (AutoAwesome Sparkle)
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(14.dp))
                         .clickable { showExamplesDialog = true }
                         .testTag("sql_examples_button"),
                     color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     tonalElevation = 1.dp
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 4.dp),
+                            .padding(horizontal = 10.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -504,124 +548,129 @@ fun QueryScreen(
                             imageVector = Icons.Outlined.AutoAwesome,
                             contentDescription = "Ejemplos",
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             "Ejemplos",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
 
-                // 2. Historial (Drawn outline clock)
+                // 2. Historial (History clock)
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(14.dp))
                         .clickable { onOpenHistoryDrawer() }
                         .testTag("query_history_button"),
                     color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     tonalElevation = 1.dp
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 4.dp),
+                            .padding(horizontal = 10.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.History,
                             contentDescription = "Historial",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(17.dp)
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             "Historial",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
+            }
 
-                // 3. Guardar (Drawn outline bookmark / diskette)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // 3. Guardar (Bookmark)
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(14.dp))
                         .clickable {
                             isSavingCurrent = true
                             showSavedDialog = true
                         }
                         .testTag("save_query_button"),
                     color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     tonalElevation = 1.dp
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 4.dp),
+                            .padding(horizontal = 10.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.BookmarkBorder,
                             contentDescription = "Guardar",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(17.dp)
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             "Guardar",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
 
-                // 4. Cargar (Drawn outline folder / SQL picker)
+                // 4. Cargar archivo (Folder)
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(14.dp))
                         .clickable { showLoadOptionsDialog = true }
                         .testTag("load_query_button"),
                     color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(14.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     tonalElevation = 1.dp
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 4.dp),
+                            .padding(horizontal = 10.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.FolderOpen,
-                            contentDescription = "Cargar",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(17.dp)
+                            contentDescription = "Cargar SQL",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            "Cargar",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
+                            "Cargar .sql",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
@@ -696,13 +745,14 @@ fun QueryScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
+                        AutoResizeText(
                             text = "Visualización (${result.rows.size} filas)",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            minFontSize = 9.sp,
+                            targetFontSize = 12.sp
                         )
 
                         Row(

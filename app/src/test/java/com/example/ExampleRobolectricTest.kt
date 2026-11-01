@@ -28,8 +28,8 @@ class ExampleRobolectricTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val dbManager = DatabaseManager(context)
 
-    // Execute query
-    val result = dbManager.executeSql("SELECT * FROM clientes;")
+    // Execute query on default database (facultad_ciencias.db)
+    val result = dbManager.executeSql("SELECT * FROM estudiantes;")
     assertTrue(result.isSuccess)
     assertTrue(result.columns.contains("nombre"))
     assertTrue(result.rows.isNotEmpty())
@@ -158,8 +158,8 @@ class ExampleRobolectricTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val dbManager = DatabaseManager(context)
 
-    // Execute query suitable for charts (ciudad and sum/avg saldo)
-    val result = dbManager.executeSql("SELECT ciudad, SUM(saldo) as total_saldo FROM clientes GROUP BY ciudad;")
+    // Execute query suitable for charts (ano_carrera and avg promedio)
+    val result = dbManager.executeSql("SELECT ano_carrera, ROUND(AVG(promedio), 2) as promedio_ano FROM estudiantes GROUP BY ano_carrera;")
     assertTrue(result.isSuccess)
     assertTrue(result.isQuery)
     assertEquals(2, result.columns.size)
@@ -422,9 +422,10 @@ class ExampleRobolectricTest {
     val dbManager = DatabaseManager(context)
     val importer = com.example.data.SpreadsheetImporter(context)
 
-    // 1. Manually create an 'estudiantes' table with old schema (id, nombre, telefono)
+    // 1. Manually create an 'estudiantes_demo' table with old schema (id, nombre, telefono)
+    dbManager.executeSql("DROP TABLE IF EXISTS estudiantes_demo;")
     val createRes = dbManager.executeSql(
-      "CREATE TABLE estudiantes (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, telefono TEXT);"
+      "CREATE TABLE estudiantes_demo (id INTEGER PRIMARY KEY AUTOINCREMENT, nombre TEXT, telefono TEXT);"
     )
     assertTrue(createRes.isSuccess)
 
@@ -442,22 +443,22 @@ class ExampleRobolectricTest {
     assertEquals("promedio", parsedSheet.headers[2])
 
     val db = dbManager.getActiveDatabase()
-    // 3. Import with createNewTable = true into existing 'estudiantes'
+    // 3. Import with createNewTable = true into existing 'estudiantes_demo'
     val result = importer.importSheetToDatabase(
       db = db,
       sheet = parsedSheet,
-      tableName = "estudiantes",
+      tableName = "estudiantes_demo",
       headersToUse = parsedSheet.headers,
       typesToUse = parsedSheet.inferredTypes,
       createNewTable = true
     )
 
-    // Should succeed and NOT throw "table estudiantes has no column named matricula"
+    // Should succeed and NOT throw "table estudiantes_demo has no column named matricula"
     assertTrue("Import should succeed: ${result.message}", result.isSuccess)
     assertEquals(2, result.rowsImported)
 
     // Verify new table data and columns
-    val selectRes = dbManager.executeSql("SELECT matricula, carrera, promedio FROM estudiantes;")
+    val selectRes = dbManager.executeSql("SELECT matricula, carrera, promedio FROM estudiantes_demo;")
     assertTrue(selectRes.isSuccess)
     assertEquals(2, selectRes.rows.size)
     assertEquals("A001", selectRes.rows[0][0])
@@ -730,6 +731,69 @@ class ExampleRobolectricTest {
     val createTableEx = examples.find { it.title.contains("IF NOT EXISTS") }
     assertNotNull(createTableEx)
     assertTrue(createTableEx!!.sql.contains("CREATE TABLE IF NOT EXISTS"))
+  }
+
+  @Test
+  fun `facultad ciencias is default database with 3 tables, 12 records each and user name`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val dbManager = DatabaseManager(context)
+
+    // Verify it is the default database on opening the app
+    assertEquals("facultad_ciencias.db", dbManager.getCurrentDbName())
+
+    // Verify 3 tables exist
+    val tables = dbManager.getTables().map { it.name }
+    assertTrue("Should contain materias: $tables", tables.contains("materias"))
+    assertTrue("Should contain estudiantes: $tables", tables.contains("estudiantes"))
+    assertTrue("Should contain profesores: $tables", tables.contains("profesores"))
+
+    // Verify exactly 12 records in profesores
+    val profCount = dbManager.executeSql("SELECT COUNT(*) FROM profesores;")
+    assertTrue(profCount.isSuccess)
+    assertEquals("12", profCount.rows[0][0])
+
+    // Verify user's name is present in profesores
+    val userProf = dbManager.executeSql("SELECT nombre, especialidad FROM profesores WHERE nombre LIKE '%Eduardo Sanamé%';")
+    assertTrue(userProf.isSuccess)
+    assertEquals(1, userProf.rows.size)
+    assertEquals("Prof. Eduardo Sanamé Durán", userProf.rows[0][0])
+
+    // Verify exactly 12 records in materias
+    val matCount = dbManager.executeSql("SELECT COUNT(*) FROM materias;")
+    assertTrue(matCount.isSuccess)
+    assertEquals("12", matCount.rows[0][0])
+
+    // Verify requested subjects: Informática, Ciencias de Datos, Física, Matemática
+    val matNames = dbManager.executeSql("SELECT nombre FROM materias;").rows.map { it[0] }
+    assertTrue(matNames.any { it.contains("Informática", ignoreCase = true) })
+    assertTrue(matNames.any { it.contains("Ciencias de Datos", ignoreCase = true) })
+    assertTrue(matNames.any { it.contains("Física", ignoreCase = true) })
+    assertTrue(matNames.any { it.contains("Matemática", ignoreCase = true) })
+
+    // Verify exactly 12 records in estudiantes
+    val estCount = dbManager.executeSql("SELECT COUNT(*) FROM estudiantes;")
+    assertTrue(estCount.isSuccess)
+    assertEquals("12", estCount.rows[0][0])
+
+    // Verify relational JOIN query works seamlessly across the 3 tables
+    val joinQuery = """
+      SELECT e.nombre AS estudiante, m.nombre AS materia, p.nombre AS profesor, e.promedio
+      FROM estudiantes e
+      JOIN materias m ON e.materia_id = m.id
+      JOIN profesores p ON m.profesor_id = p.id;
+    """.trimIndent()
+    val joinResult = dbManager.executeSql(joinQuery)
+    assertTrue("Join should succeed: ${joinResult.message}", joinResult.isSuccess)
+    assertEquals(12, joinResult.rows.size)
+
+    // Verify resetDatabase restores facultad_ciencias.db to pristine state with 12 records
+    dbManager.executeSql("DROP TABLE IF EXISTS estudiantes;")
+    assertTrue(dbManager.getTables().none { it.name == "estudiantes" })
+    val resetOk = dbManager.resetDatabase("facultad_ciencias.db")
+    assertTrue(resetOk)
+    val restoredCount = dbManager.executeSql("SELECT COUNT(*) FROM estudiantes;")
+    assertTrue(restoredCount.isSuccess)
+    assertEquals("12", restoredCount.rows[0][0])
   }
 }
 

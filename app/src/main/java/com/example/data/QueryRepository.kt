@@ -138,19 +138,24 @@ class QueryRepository(context: Context) {
             savedList.addAll(
                 listOf(
                     SavedQueryItem(
-                        title = "Listar Clientes y Saldos",
-                        description = "Consulta con filtro de saldo y orden descendente",
-                        sql = "SELECT id, nombre, email, ciudad, saldo\nFROM clientes\nWHERE saldo > 100\nORDER BY saldo DESC;"
+                        title = "Estudiantes, Materias y Profesores (JOIN Triple)",
+                        description = "Relaciona cada estudiante con su materia y profesor titular",
+                        sql = "SELECT e.matricula, e.nombre AS estudiante, m.nombre AS materia, p.nombre AS profesor, e.promedio\nFROM estudiantes e\nINNER JOIN materias m ON e.materia_id = m.id\nINNER JOIN profesores p ON m.profesor_id = p.id\nORDER BY e.promedio DESC;"
                     ),
                     SavedQueryItem(
-                        title = "Ventas con Clientes (INNER JOIN)",
-                        description = "Relaciona pedidos con información de cliente",
-                        sql = "SELECT p.id AS pedido_id, c.nombre AS cliente, p.fecha, p.estado, p.total\nFROM pedidos p\nINNER JOIN clientes c ON p.cliente_id = c.id\nORDER BY p.id DESC;"
+                        title = "Cátedras de Ciencias de Datos & IA (Prof. Eduardo Sanamé)",
+                        description = "Materias a cargo del titular Prof. Eduardo Sanamé Durán",
+                        sql = "SELECT m.codigo, m.nombre AS materia, m.creditos, m.semestre, p.nombre AS profesor, p.especialidad\nFROM materias m\nINNER JOIN profesores p ON m.profesor_id = p.id\nWHERE p.nombre LIKE '%Sanamé%'\nORDER BY m.semestre ASC;"
                     ),
                     SavedQueryItem(
-                        title = "Detalle Completo de Pedidos",
-                        description = "Join triple entre clientes, pedidos, detalles y productos",
-                        sql = "SELECT p.id AS pedido_id, c.nombre AS cliente, pr.nombre AS producto, d.cantidad, d.precio_unitario, (d.cantidad * d.precio_unitario) AS subtotal\nFROM pedidos p\nJOIN clientes c ON p.cliente_id = c.id\nJOIN detalles_pedido d ON p.id = d.pedido_id\nJOIN productos pr ON d.producto_id = pr.id;"
+                        title = "Cuadro de Honor (Promedio >= 95.0)",
+                        description = "Alumnos de máximo rendimiento académico en la Facultad",
+                        sql = "SELECT e.nombre, e.matricula, m.nombre AS materia, e.promedio, e.ano_carrera\nFROM estudiantes e\nJOIN materias m ON e.materia_id = m.id\nWHERE e.promedio >= 95.0\nORDER BY e.promedio DESC;"
+                    ),
+                    SavedQueryItem(
+                        title = "Promedio General por Disciplina Académica",
+                        description = "Agrupación de rendimiento medio y total de inscritos por materia",
+                        sql = "SELECT m.nombre AS materia, COUNT(e.id) AS total_estudiantes, ROUND(AVG(e.promedio), 2) AS promedio_materia\nFROM materias m\nLEFT JOIN estudiantes e ON m.id = e.materia_id\nGROUP BY m.id, m.nombre\nORDER BY promedio_materia DESC;"
                     )
                 )
             )
@@ -175,52 +180,48 @@ class QueryRepository(context: Context) {
     fun getEducationalExamples(): List<SqlExample> {
         return listOf(
             SqlExample(
-                title = "Consulta Básica (SELECT)",
+                title = "Consulta General de Alumnos (SELECT)",
                 category = "Básicas",
-                description = "Selecciona todas las columnas y filas de la tabla de clientes.",
-                sql = "SELECT * FROM clientes;"
+                description = "Lista todos los estudiantes ordenados por promedio académico de mayor a menor.",
+                sql = "SELECT matricula, nombre, promedio, ano_carrera\nFROM estudiantes\nORDER BY promedio DESC;"
             ),
             SqlExample(
-                title = "Filtro con WHERE y Ordenamiento",
+                title = "Filtro de Profesores por Departamento",
                 category = "Básicas",
-                description = "Productos de Electrónica con precio mayor a 100 ordenados de mayor a menor.",
-                sql = "SELECT nombre, categoria, precio, stock\nFROM productos\nWHERE categoria = 'Electrónica' AND precio > 100\nORDER BY precio DESC;"
+                description = "Filtra profesores del área de Informática y Computación ordenados alfabéticamente.",
+                sql = "SELECT nombre, especialidad, email\nFROM profesores\nWHERE departamento = 'Informática y Computación'\nORDER BY nombre ASC;"
             ),
             SqlExample(
                 title = "Inserción con Clave Auto-Incremental (INSERT OR IGNORE)",
                 category = "Manipulación (DML)",
-                description = "Inserta un nuevo registro. Al omitir 'id', SQLite genera la clave primaria; con 'OR IGNORE' no falla si se ejecuta varias veces.",
-                sql = "-- Nota didáctica: Al omitir 'id', SQLite genera la clave primaria secuencial.\n" +
-                      "-- 'INSERT OR IGNORE' garantiza que puedas re-ejecutar el ejemplo sin errores de clave/email duplicado:\n" +
-                      "INSERT OR IGNORE INTO clientes (nombre, email, ciudad, saldo)\n" +
-                      "VALUES ('Valeria Castro', 'valeria.castro@ejemplo.com', 'Málaga', 280.00);"
+                description = "Inserta un nuevo estudiante. Con 'OR IGNORE' no falla si la matrícula o ID ya existen.",
+                sql = "-- 'INSERT OR IGNORE' garantiza re-ejecución segura sin fallos por clave duplicada:\n" +
+                      "INSERT OR IGNORE INTO estudiantes (nombre, matricula, materia_id, promedio, ano_carrera)\n" +
+                      "VALUES ('Alejandro Cruz Paz', 'EST-2026-099', 2, 94.5, 1);"
             ),
             SqlExample(
-                title = "Inserción Segura (INSERT OR IGNORE)",
+                title = "Inserción Segura de Profesor (INSERT OR IGNORE)",
                 category = "Manipulación (DML)",
-                description = "Técnica didáctica para evitar errores por clave duplicada: si el registro o ID ya existe, SQLite lo ignora en lugar de fallar.",
-                sql = "-- 'INSERT OR IGNORE' es el estándar recomendado para scripts de prueba re-ejecutables:\n" +
-                      "-- Si la clave primaria 99 o el email ya existen, la consulta no dará error y continuará.\n" +
-                      "INSERT OR IGNORE INTO clientes (id, nombre, email, ciudad, saldo)\n" +
-                      "VALUES (99, 'Lucas Benítez', 'lucas.benitez@ejemplo.com', 'Bilbao', 350.50);"
+                description = "Inserta un nuevo profesor titular con correo único institucional.",
+                sql = "INSERT OR IGNORE INTO profesores (nombre, especialidad, email, departamento)\n" +
+                      "VALUES ('Dr. Fernando Ramos', 'Simulación de Sistemas Cuánticos', 'fernando.ramos@facultadciencias.edu', 'Física Avanzada');"
             ),
             SqlExample(
                 title = "Inserción o Reemplazo (REPLACE INTO)",
                 category = "Manipulación (DML)",
-                description = "Si la clave primaria o valor UNIQUE ya existe, reemplaza la fila completa con los nuevos datos (Upsert).",
-                sql = "-- 'REPLACE INTO' (o 'INSERT OR REPLACE INTO') actualiza la fila si ya existe o la crea si no existe:\n" +
-                      "-- Permite re-ejecutar sin errores y mantiene los datos actualizados:\n" +
-                      "REPLACE INTO clientes (id, nombre, email, ciudad, saldo)\n" +
-                      "VALUES (1, 'Ana Torres Modificada', 'ana@ejemplo.com', 'Madrid Centro', 1500.00);"
+                description = "Si la clave primaria o valor UNIQUE ya existe, actualiza la fila completa (Upsert).",
+                sql = "-- 'REPLACE INTO' actualiza la fila si ya existe o la crea si no existe:\n" +
+                      "REPLACE INTO estudiantes (id, nombre, matricula, materia_id, promedio, ano_carrera)\n" +
+                      "VALUES (1, 'Gabriel Alonso Pérez', 'EST-2024-001', 2, 98.5, 3);"
             ),
             SqlExample(
                 title = "Actualización Segura (UPDATE con WHERE)",
                 category = "Manipulación (DML)",
-                description = "Modifica registros específicos. Importante: ¡Nunca olvides la cláusula WHERE o modificarás todas las filas!",
+                description = "Modifica registros específicos mediante su clave primaria o matrícula.",
                 sql = "-- Regla de oro en SQL: Verifica siempre la condición WHERE antes de ejecutar UPDATE\n" +
-                      "UPDATE clientes\n" +
-                      "SET saldo = saldo + 50.00\n" +
-                      "WHERE ciudad = 'Madrid';"
+                      "UPDATE estudiantes\n" +
+                      "SET promedio = 99.0\n" +
+                      "WHERE matricula = 'EST-2024-002';"
             ),
             SqlExample(
                 title = "Eliminación Controlada (DELETE con WHERE)",
@@ -293,6 +294,60 @@ class QueryRepository(context: Context) {
                 category = "Utilidades SQLite",
                 description = "Analiza cómo SQLite resolverá y optimizará la consulta.",
                 sql = "EXPLAIN QUERY PLAN\nSELECT * FROM pedidos WHERE cliente_id = 1;"
+            ),
+            SqlExample(
+                title = "Provincias de Cuba por Población",
+                category = "Cuba Geografía & Cultura",
+                description = "Lista las provincias ordenadas de mayor a menor población con su capital y región.",
+                sql = "-- Consulta para la base 'cuba_geografia.db':\nSELECT nombre, capital, region, poblacion, area_km2\nFROM provincias\nORDER BY poblacion DESC;"
+            ),
+            SqlExample(
+                title = "Sitios Patrimonio de la Humanidad (UNESCO)",
+                category = "Cuba Geografía & Cultura",
+                description = "Lugares de interés histórico y natural en Cuba con reconocimiento UNESCO vinculados a su provincia.",
+                sql = "SELECT l.nombre AS sitio_patrimonial, l.tipo, p.nombre AS provincia, p.region\nFROM lugares_interes l\nINNER JOIN provincias p ON l.provincia_id = p.id\nWHERE l.patrimonio_unesco = 1\nORDER BY p.nombre ASC;"
+            ),
+            SqlExample(
+                title = "Población y Área por Región de Cuba",
+                category = "Cuba Geografía & Cultura",
+                description = "Agrupa y totaliza la población y el promedio de área por región geográfica cubana.",
+                sql = "SELECT region, COUNT(*) AS total_provincias, SUM(poblacion) AS poblacion_total, ROUND(AVG(area_km2), 1) AS area_promedio_km2\nFROM provincias\nGROUP BY region\nORDER BY poblacion_total DESC;"
+            ),
+            SqlExample(
+                title = "Gastronomía Tradicional Cubana",
+                category = "Cuba Geografía & Cultura",
+                description = "Platos y delicias típicas cubanas ordenadas por tipo y región de origen.",
+                sql = "SELECT nombre, tipo, ingrediente_principal, region_origen\nFROM platos_tradicionales\nORDER BY tipo ASC, nombre ASC;"
+            ),
+            SqlExample(
+                title = "Estudiantes, Materias y Profesores (JOIN)",
+                category = "Centro Estudiantil & Ciencias",
+                description = "Relación completa entre estudiantes, la materia que cursan y el profesor titular asignado.",
+                sql = "-- Consulta relacional completa para 'centro_estudiantil.db':\n" +
+                      "SELECT e.matricula, e.nombre AS estudiante, m.nombre AS materia, p.nombre AS profesor, e.promedio\n" +
+                      "FROM estudiantes e\n" +
+                      "INNER JOIN materias m ON e.materia_id = m.id\n" +
+                      "INNER JOIN profesores p ON m.profesor_id = p.id\n" +
+                      "ORDER BY e.promedio DESC;"
+            ),
+            SqlExample(
+                title = "Materias impartidas por el Prof. Eduardo Sanamé",
+                category = "Centro Estudiantil & Ciencias",
+                description = "Filtra las materias de Ciencia de Datos e Inteligencia Artificial impartidas por el profesor titular.",
+                sql = "SELECT m.codigo, m.nombre AS materia, m.creditos, m.semestre, p.especialidad\n" +
+                      "FROM materias m\n" +
+                      "INNER JOIN profesores p ON m.profesor_id = p.id\n" +
+                      "WHERE p.nombre LIKE '%Sanamé%';"
+            ),
+            SqlExample(
+                title = "Estudiantes de Honor (Promedio >= 95.0)",
+                category = "Centro Estudiantil & Ciencias",
+                description = "Lista los alumnos de mayor rendimiento académico vinculando su disciplina científica.",
+                sql = "SELECT e.nombre, e.matricula, m.nombre AS materia, e.promedio, e.ano_carrera\n" +
+                      "FROM estudiantes e\n" +
+                      "JOIN materias m ON e.materia_id = m.id\n" +
+                      "WHERE e.promedio >= 95.0\n" +
+                      "ORDER BY e.promedio DESC;"
             )
         )
     }

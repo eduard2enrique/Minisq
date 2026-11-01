@@ -282,7 +282,7 @@ fun MainScreen(
 
                         Column {
                             Text(
-                                text = "MiniSQL Pro 1.0",
+                                text = "MiniSQL Pro 1.1",
                                 style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
                                 fontWeight = FontWeight.ExtraBold,
                                 color = MaterialTheme.colorScheme.onBackground,
@@ -588,7 +588,14 @@ fun MainScreen(
                         )
                         1 -> DesignerScreen(
                             dbManager = dbManager,
-                            onRefreshTables = { refreshDatabaseState() }
+                            onRefreshTables = { refreshDatabaseState() },
+                            onResetCurrentDb = {
+                                val ok = dbManager.resetDatabase(currentDbName)
+                                if (ok) {
+                                    refreshDatabaseState()
+                                    Toast.makeText(context, "Base '$currentDbName' restablecida a su estado original.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
                         )
                         2 -> ImportExportScreen(
                             dbManager = dbManager,

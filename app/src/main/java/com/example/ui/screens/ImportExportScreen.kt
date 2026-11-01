@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.LocalHospital
+import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.ShoppingCart
@@ -656,7 +657,31 @@ fun ImportExportScreen(
                     }
                 }
 
-                // Educational Database 1: Universidad & Cursos
+                // Educational Database 1: Facultad de Ciencias & Tecnología
+                OutlinedButton(
+                    onClick = { loadEducationalDb("facultad_ciencias", "Facultad de Ciencias & Tecnología") },
+                    modifier = Modifier.fillMaxWidth().testTag("didactic_db_facultad_ciencias")
+                ) {
+                    Icon(Icons.Outlined.School, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Facultad de Ciencias (12 Materias, Alumnos, Profesores)")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Educational Database 2: Cuba: Provincias & Cultura
+                OutlinedButton(
+                    onClick = { loadEducationalDb("cuba", "Cuba: Provincias & Cultura") },
+                    modifier = Modifier.fillMaxWidth().testTag("didactic_db_cuba")
+                ) {
+                    Icon(Icons.Outlined.Place, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cuba (15 Provincias, Lugares UNESCO, Gastronomía)")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Educational Database 2: Universidad & Cursos
                 OutlinedButton(
                     onClick = { loadEducationalDb("university", "Universidad & Cursos") },
                     modifier = Modifier.fillMaxWidth().testTag("didactic_db_university")

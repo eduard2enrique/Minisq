@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -19,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Close
@@ -29,8 +32,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -81,53 +83,83 @@ fun SqlResultTable(
         tonalElevation = 2.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            // Header bar: Search filter and Export/Report actions
+            // Header bar: Compact Search Pill and Export/Report actions aligned at 36dp
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = {
-                        Text(
-                            "Filtrar en resultados...",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    },
-                    leadingIcon = {
+                // Sleek, compact search bar (height 36.dp) matching adjacent buttons perfectly
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(36.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(
                             imageVector = Icons.Outlined.Search,
                             contentDescription = "Buscar",
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(16.dp)
                         )
-                    },
-                    trailingIcon = {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier.weight(1f),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = "Filtrar...",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                    maxLines = 1
+                                )
+                            }
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                singleLine = true,
+                                textStyle = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("result_filter_input")
+                            )
+                        }
                         if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { searchQuery = "" },
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Icon(
                                     imageVector = Icons.Outlined.Close,
                                     contentDescription = "Limpiar filtro",
-                                    modifier = Modifier.size(16.dp)
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                         }
-                    },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp)
-                        .padding(end = 8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    shape = RoundedCornerShape(10.dp)
-                )
+                    }
+                }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     FilledTonalButton(
                         onClick = onOpenReport,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp),
@@ -139,7 +171,14 @@ fun SqlResultTable(
                     ) {
                         Icon(imageVector = Icons.Outlined.Assessment, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Informe", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+                        AutoResizeText(
+                            text = "Informe",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            minFontSize = 8.5.sp,
+                            targetFontSize = 11.sp
+                        )
                     }
 
                     FilledTonalButton(
@@ -153,7 +192,13 @@ fun SqlResultTable(
                     ) {
                         Icon(imageVector = Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("CSV", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+                        AutoResizeText(
+                            text = "CSV",
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            minFontSize = 8.5.sp,
+                            targetFontSize = 11.sp
+                        )
                     }
 
                     FilledTonalButton(
@@ -165,7 +210,13 @@ fun SqlResultTable(
                             contentColor = MaterialTheme.colorScheme.onSurface
                         )
                     ) {
-                        Text("JSON", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+                        AutoResizeText(
+                            text = "JSON",
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            minFontSize = 8.5.sp,
+                            targetFontSize = 11.sp
+                        )
                     }
                 }
             }
@@ -206,13 +257,14 @@ fun SqlResultTable(
                         )
 
                         result.columns.forEach { colName ->
-                            Text(
+                            AutoResizeText(
                                 text = colName,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                minFontSize = 9.sp,
+                                targetFontSize = 12.sp,
                                 modifier = Modifier
                                     .width(130.dp)
                                     .padding(horizontal = 6.dp)
@@ -246,11 +298,10 @@ fun SqlResultTable(
 
                                 row.forEach { cellValue ->
                                     val isNull = cellValue == "NULL"
-                                    Text(
+                                    AutoResizeText(
                                         text = cellValue,
                                         style = MaterialTheme.typography.bodySmall.copy(
-                                            fontFamily = if (isNull) FontFamily.Monospace else FontFamily.Default,
-                                            fontSize = 12.sp
+                                            fontFamily = if (isNull) FontFamily.Monospace else FontFamily.Default
                                         ),
                                         color = if (isNull) {
                                             MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
@@ -258,7 +309,8 @@ fun SqlResultTable(
                                             MaterialTheme.colorScheme.onSurface
                                         },
                                         maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
+                                        minFontSize = 9.5.sp,
+                                        targetFontSize = 12.sp,
                                         modifier = Modifier
                                             .width(130.dp)
                                             .padding(horizontal = 6.dp)
@@ -274,20 +326,41 @@ fun SqlResultTable(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Mostrando ${filteredRows.size} de ${result.rows.size} filas • ${result.columns.size} columnas",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                AutoResizeText(
+                    text = "${filteredRows.size} de ${result.rows.size} filas • ${result.columns.size} col",
+                    style = MaterialTheme.typography.bodySmall,
+                    targetFontSize = 11.sp,
+                    minFontSize = 9.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .padding(end = 8.dp)
                 )
-                Text(
-                    text = "Desliza para ver más datos",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AutoResizeText(
+                            text = "↔ Deslizar datos",
+                            style = MaterialTheme.typography.labelSmall,
+                            targetFontSize = 10.sp,
+                            minFontSize = 8.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
     }
