@@ -260,7 +260,12 @@ fun MainScreen(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f, fill = false)
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { selectedTab = 0 }
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                            .testTag("app_brand_logo_btn")
                     ) {
                         // MiniSQL App Badge in smooth iOS squircle
                         Box(
@@ -365,12 +370,12 @@ fun MainScreen(
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(
+                            com.example.ui.components.AutoResizeText(
                                 text = "Nueva BD",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                targetFontSize = 11.5.sp,
+                                minFontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                softWrap = false
+                                maxLines = 1
                             )
                         }
                     }
@@ -431,18 +436,19 @@ fun MainScreen(
                                 val displayName = currentDbName.removeSuffix(".db")
                                 val dynamicFontSize = when {
                                     displayName.length > 22 -> 11.5.sp
-                                    displayName.length > 16 -> 13.sp
-                                    else -> 15.sp
+                                    displayName.length > 16 -> 12.5.sp
+                                    else -> 14.5.sp
                                 }
                                 Text(
-                                    text = displayName,
+                                    text = displayName.replace("_", "_\u200B"),
                                     style = MaterialTheme.typography.titleMedium.copy(
                                         fontFamily = FontFamily.Monospace,
-                                        fontSize = dynamicFontSize
+                                        fontSize = dynamicFontSize,
+                                        lineHeight = (dynamicFontSize.value * 1.18).sp
                                     ),
                                     fontWeight = FontWeight.SemiBold,
                                     color = MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
@@ -498,10 +504,9 @@ fun MainScreen(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         val tabs = listOf(
-                            Triple(0, "Consulta", Icons.Outlined.Terminal),
-                            Triple(1, "Diseñar", Icons.Outlined.DesignServices),
-                            Triple(2, "Importar", Icons.Outlined.UploadFile),
-                            Triple(3, "Tablas", Icons.Outlined.TableChart)
+                            Triple(0, "Consultas", Icons.Outlined.Terminal),
+                            Triple(1, "Tablas", Icons.Outlined.TableChart),
+                            Triple(2, "Importar", Icons.Outlined.UploadFile)
                         )
 
                         tabs.forEach { (index, title, icon) ->
@@ -558,6 +563,7 @@ fun MainScreen(
                             tables = tablesList,
                             onRefreshTables = { refreshDatabaseState() },
                             isDark = isDarkTheme,
+                            activeDbName = currentDbName,
                             onExportCsvFile = { result ->
                                 scope.launch {
                                     val csv = dbManager.exportQueryResultCsv(result)
@@ -586,35 +592,11 @@ fun MainScreen(
                                 externalTriggerExecute = false
                             }
                         )
-                        1 -> DesignerScreen(
-                            dbManager = dbManager,
-                            onRefreshTables = { refreshDatabaseState() },
-                            onResetCurrentDb = {
-                                val ok = dbManager.resetDatabase(currentDbName)
-                                if (ok) {
-                                    refreshDatabaseState()
-                                    Toast.makeText(context, "Base '$currentDbName' restablecida a su estado original.", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        )
-                        2 -> ImportExportScreen(
-                            dbManager = dbManager,
-                            onDatabaseChanged = { refreshDatabaseState() },
-                            onNavigateToTables = { selectedTab = 3 },
-                            onNavigateToQuery = { sql ->
-                                selectedTab = 0
-                                if (sql != null) {
-                                    externalSelectedSql = sql
-                                    externalTriggerExecute = false
-                                }
-                            }
-                        )
-                        3 -> TablesScreen(
+                        1 -> TablesScreen(
                             dbManager = dbManager,
                             tables = tablesList,
                             onRefreshTables = { refreshDatabaseState() },
                             activeDbName = currentDbName,
-                            onNavigateToDesigner = { selectedTab = 1 },
                             onNavigateToImport = { selectedTab = 2 },
                             onNavigateToSql = { starterSql ->
                                 selectedTab = 0
@@ -626,6 +608,18 @@ fun MainScreen(
                                 if (ok) {
                                     refreshDatabaseState()
                                     Toast.makeText(context, "Base '$currentDbName' restablecida a su estado original.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        )
+                        2 -> ImportExportScreen(
+                            dbManager = dbManager,
+                            onDatabaseChanged = { refreshDatabaseState() },
+                            onNavigateToTables = { selectedTab = 1 },
+                            onNavigateToQuery = { sql ->
+                                selectedTab = 0
+                                if (sql != null) {
+                                    externalSelectedSql = sql
+                                    externalTriggerExecute = false
                                 }
                             }
                         )
@@ -653,7 +647,7 @@ fun MainScreen(
                 val ok = dbManager.createNewDatabase(name, templateId)
                 if (ok) {
                     refreshDatabaseState()
-                    selectedTab = 3 // View tables
+                    selectedTab = 1 // View tables
                     Toast.makeText(context, "Base '$name' creada con plantilla.", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(context, "Ya existe una base de datos con ese nombre.", Toast.LENGTH_SHORT).show()

@@ -57,6 +57,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -98,7 +108,7 @@ import com.example.ui.components.SqlQueryChart
 import com.example.ui.components.SqlResultTable
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun QueryScreen(
     dbManager: DatabaseManager,
@@ -106,6 +116,7 @@ fun QueryScreen(
     tables: List<TableSummary>,
     onRefreshTables: () -> Unit,
     isDark: Boolean = true,
+    activeDbName: String = dbManager.getCurrentDbName(),
     onExportCsvFile: (SqlExecutionResult) -> Unit,
     onExportJsonFile: (SqlExecutionResult) -> Unit,
     onExportReportFile: ((String) -> Unit)? = null,
@@ -117,29 +128,95 @@ fun QueryScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val keyboardController = LocalSoftwareKeyboardController.current
 
-    var sqlQuery by remember {
-        mutableStateOf(
-            TextFieldValue(
-                text = "SELECT e.matricula, e.nombre AS estudiante, m.nombre AS materia, p.nombre AS profesor, e.promedio\n" +
-                        "FROM estudiantes e\n" +
-                        "INNER JOIN materias m ON e.materia_id = m.id\n" +
-                        "INNER JOIN profesores p ON m.profesor_id = p.id\n" +
-                        "ORDER BY e.promedio DESC;",
-                selection = TextRange(0)
-            )
-        )
-    }
+    val scrollState = rememberScrollState()
+    val resultsRequester = remember { BringIntoViewRequester() }
+    var resultsSectionY by remember { mutableIntStateOf(-1) }
+    var scrollToResultsTrigger by remember { mutableIntStateOf(0) }
 
     var executionResult by remember { mutableStateOf<SqlExecutionResult?>(null) }
     var isExecuting by remember { mutableStateOf(false) }
     var resultViewMode by remember { mutableIntStateOf(0) } // 0: Tabla, 1: Gráfico
+
+    fun scrollToResults() {
+        keyboardController?.hide()
+        scope.launch {
+            if (resultsSectionY > 0) {
+                val targetY = (resultsSectionY - 16).coerceIn(0, scrollState.maxValue)
+                scrollState.animateScrollTo(
+                    targetY,
+                    animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing)
+                )
+            } else {
+                try {
+                    resultsRequester.bringIntoView()
+                } catch (_: Exception) {
+                    scrollState.animateScrollTo(scrollState.maxValue)
+                }
+            }
+        }
+    }
+
+    fun scrollToEditor() {
+        scope.launch {
+            scrollState.animateScrollTo(
+                0,
+                animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
+            )
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(scrollToResultsTrigger) {
+        if (scrollToResultsTrigger > 0 && executionResult != null) {
+            keyboardController?.hide()
+            kotlinx.coroutines.delay(120)
+            if (resultsSectionY <= 0) {
+                kotlinx.coroutines.delay(80)
+            }
+            if (resultsSectionY > 0) {
+                val targetY = (resultsSectionY - 16).coerceIn(0, scrollState.maxValue)
+                scrollState.animateScrollTo(
+                    targetY,
+                    animationSpec = tween(durationMillis = 450, easing = FastOutSlowInEasing)
+                )
+            } else {
+                try {
+                    resultsRequester.bringIntoView()
+                } catch (_: Exception) {
+                    scrollState.animateScrollTo(scrollState.maxValue)
+                }
+            }
+        }
+    }
+
+    val initialSql = remember(activeDbName) {
+        getDefaultQueryForDatabase(activeDbName, tables.map { it.name })
+    }
+    var sqlQuery by remember(activeDbName) {
+        mutableStateOf(
+            TextFieldValue(
+                text = initialSql,
+                selection = TextRange(initialSql.length)
+            )
+        )
+    }
+
+    var lastDb by remember { mutableStateOf(activeDbName) }
+    androidx.compose.runtime.LaunchedEffect(activeDbName) {
+        if (activeDbName != lastDb && initialSqlToLoad == null) {
+            lastDb = activeDbName
+            val newSql = getDefaultQueryForDatabase(activeDbName, tables.map { it.name })
+            sqlQuery = TextFieldValue(newSql, TextRange(newSql.length))
+        }
+    }
 
     // Dialogs state
     var showHistoryDialog by remember { mutableStateOf(false) }
     var showSavedDialog by remember { mutableStateOf(false) }
     var isSavingCurrent by remember { mutableStateOf(false) }
     var showExamplesDialog by remember { mutableStateOf(false) }
+    var examplesInitialCategory by remember { mutableStateOf("Todas") }
     var showSyntaxWarningDialog by remember { mutableStateOf(false) }
     var pendingSyntaxIssues by remember { mutableStateOf<List<com.example.data.SqlSyntaxIssue>>(emptyList()) }
     var showLoadOptionsDialog by remember { mutableStateOf(false) }
@@ -179,11 +256,13 @@ fun QueryScreen(
     }
 
     fun executeLoadedSql(file: LoadedSqlFile) {
+        keyboardController?.hide()
         scope.launch {
             isExecuting = true
             val res = dbManager.executeSql(file.rawSql)
             isExecuting = false
             executionResult = res
+            scrollToResultsTrigger++
             loadedSqlFileForInspection = null
             if (res.isSuccess) {
                 onRefreshTables()
@@ -238,11 +317,13 @@ fun QueryScreen(
             }
         }
 
+        keyboardController?.hide()
         isExecuting = true
         scope.launch {
             val res = dbManager.executeSql(sqlQuery.text)
             executionResult = res
             isExecuting = false
+            scrollToResultsTrigger++
 
             // Record to history
             queryRepo.addHistoryItem(
@@ -275,85 +356,11 @@ fun QueryScreen(
         }
     }
 
-    // Quick action templates
+    // Quick action templates (Accurate for active database: Otorgamiento, Tienda, etc.)
     fun insertTemplate(type: String) {
-        val tableNames = tables.map { it.name }
-        val hasAcademic = tableNames.contains("estudiantes") || tableNames.contains("materias") || tableNames.contains("profesores")
-        val targetTable = when {
-            tableNames.contains("estudiantes") -> "estudiantes"
-            tableNames.contains("profesores") -> "profesores"
-            tableNames.contains("materias") -> "materias"
-            else -> tables.firstOrNull()?.name ?: "estudiantes"
-        }
-
-        val snippet = when (type) {
-            "create" -> """
-                CREATE TABLE IF NOT EXISTS nueva_tabla (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    nombre TEXT NOT NULL,
-                    valor REAL DEFAULT 0.0,
-                    creado_en TEXT DEFAULT CURRENT_TIMESTAMP
-                );
-            """.trimIndent()
-            "insert" -> if (hasAcademic) {
-                "INSERT OR IGNORE INTO estudiantes (nombre, matricula, materia_id, promedio, ano_carrera)\nVALUES ('Nuevo Alumno', 'EST-2026-${(100..999).random()}', 2, 95.0, 1);"
-            } else {
-                "INSERT INTO $targetTable (nombre, email, ciudad, saldo)\nVALUES ('Nuevo Registro', 'correo@ejemplo.com', 'Habana', 150.0);"
-            }
-            "select" -> "SELECT * FROM $targetTable\nORDER BY 1 ASC\nLIMIT 10;"
-            "join" -> if (hasAcademic) {
-                """
-                    SELECT
-                        e.matricula,
-                        e.nombre AS estudiante,
-                        m.nombre AS materia,
-                        p.nombre AS profesor,
-                        e.promedio
-                    FROM estudiantes e
-                    INNER JOIN materias m ON e.materia_id = m.id
-                    INNER JOIN profesores p ON m.profesor_id = p.id
-                    ORDER BY e.promedio DESC;
-                """.trimIndent()
-            } else {
-                """
-                    SELECT
-                        p.id,
-                        c.nombre,
-                        p.fecha,
-                        p.total
-                    FROM pedidos p
-                    INNER JOIN clientes c
-                        ON p.cliente_id = c.id
-                    ORDER BY p.id DESC;
-                """.trimIndent()
-            }
-            "group" -> if (hasAcademic) {
-                """
-                    SELECT
-                        m.nombre AS materia,
-                        COUNT(e.id) AS total_estudiantes,
-                        ROUND(AVG(e.promedio), 2) AS promedio_materia
-                    FROM materias m
-                    LEFT JOIN estudiantes e ON m.id = e.materia_id
-                    GROUP BY m.id, m.nombre
-                    ORDER BY promedio_materia DESC;
-                """.trimIndent()
-            } else {
-                """
-                    SELECT
-                        categoria,
-                        COUNT(*) AS cantidad,
-                        ROUND(AVG(precio), 2) AS precio_medio
-                    FROM productos
-                    GROUP BY categoria;
-                """.trimIndent()
-            }
-            else -> "SELECT * FROM $targetTable;"
-        }
+        val snippet = getSnippetForDatabase(type, activeDbName, tables.map { it.name })
         sqlQuery = TextFieldValue(snippet, TextRange(snippet.length))
     }
-
-    val scrollState = rememberScrollState()
 
     Column(
         modifier = modifier
@@ -530,7 +537,10 @@ fun QueryScreen(
                         .weight(1f)
                         .height(48.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .clickable { showExamplesDialog = true }
+                        .clickable {
+                            examplesInitialCategory = "Todas"
+                            showExamplesDialog = true
+                        }
                         .testTag("sql_examples_button"),
                     color = MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(14.dp),
@@ -676,14 +686,127 @@ fun QueryScreen(
                     }
                 }
             }
+
+            // Quick Jump to Results if a result already exists
+            if (executionResult != null) {
+                Surface(
+                    onClick = { scrollToResults() },
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp)
+                        .testTag("jump_to_results_bar")
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (executionResult!!.isSuccess) "Ver visualización de la consulta (${executionResult!!.rows.size} filas) ⬇" else "Ver diagnóstico del error ⬇",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Results Section
-        val result = executionResult
-        if (result != null) {
-            Card(
+        // Results Section Anchor & Container
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onGloballyPositioned { coordinates ->
+                    resultsSectionY = coordinates.positionInParent().y.toInt()
+                }
+                .bringIntoViewRequester(resultsRequester)
+        ) {
+            val result = executionResult
+            if (result != null) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Header with title and "Subir al editor"
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = if (result.isSuccess) Icons.Outlined.Assessment else Icons.Outlined.ErrorOutline,
+                                contentDescription = null,
+                                tint = if (result.isSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Visualización del Resultado",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (result.isSuccess && result.elapsedMs > 0) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                ) {
+                                    Text(
+                                        text = "${result.elapsedMs} ms",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { scrollToEditor() }
+                                .testTag("scroll_to_editor_top_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.KeyboardArrowUp,
+                                    contentDescription = "Subir al editor",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Subir al editor",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+
+                    Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 12.dp),
@@ -722,11 +845,15 @@ fun QueryScreen(
                 SqlErrorTutorCard(
                     errorMessage = result.message,
                     currentQuery = sqlQuery.text,
+                    availableTables = tables.map { it.name },
                     onApplyFix = { fixedSql ->
                         sqlQuery = TextFieldValue(fixedSql, TextRange(fixedSql.length))
                         Toast.makeText(context, "Sugerencia aplicada al editor SQL", Toast.LENGTH_SHORT).show()
                     },
-                    onOpenExamples = { showExamplesDialog = true },
+                    onOpenExamples = { category ->
+                        examplesInitialCategory = category
+                        showExamplesDialog = true
+                    },
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
             }
@@ -838,7 +965,35 @@ fun QueryScreen(
                     )
                 }
             }
+
+            // Bottom quick return button
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                TextButton(
+                    onClick = { scrollToEditor() },
+                    modifier = Modifier.testTag("scroll_to_editor_bottom_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.KeyboardArrowUp,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Volver arriba al editor SQL",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
         }
+    }
+}
     }
 
     // Dialogs
@@ -873,10 +1028,14 @@ fun QueryScreen(
     if (showExamplesDialog) {
         SqlExamplesDialog(
             examples = queryRepo.getEducationalExamples(),
+            initialCategory = examplesInitialCategory,
             onSelectExample = { sql ->
                 sqlQuery = TextFieldValue(sql, TextRange(sql.length))
             },
-            onDismiss = { showExamplesDialog = false }
+            onDismiss = {
+                showExamplesDialog = false
+                examplesInitialCategory = "Todas"
+            }
         )
     }
 
@@ -1004,3 +1163,313 @@ fun QueryScreen(
         )
     }
 }
+
+private fun getDefaultQueryForDatabase(activeDb: String, tableNames: List<String>): String {
+    val isOtorgamiento = activeDb.contains("otorgamiento", ignoreCase = true) ||
+            tableNames.contains("boletas_solicitud") ||
+            (tableNames.contains("estudiantes") && tableNames.contains("carreras"))
+    val isFacultad = (tableNames.contains("profesores") && tableNames.contains("materias")) ||
+            activeDb.contains("facultad", ignoreCase = true)
+    val isCuba = activeDb.contains("cuba", ignoreCase = true) || tableNames.contains("provincias")
+    val isTienda = tableNames.contains("clientes") || tableNames.contains("pedidos") ||
+            activeDb.contains("tienda", ignoreCase = true)
+
+    return when {
+        isOtorgamiento -> """
+            -- Escalafón Oficial Provincial (50% Índice Académico + 50% Exámenes de Ingreso)
+            SELECT 
+                ROW_NUMBER() OVER (
+                    ORDER BY 
+                        ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) DESC,
+                        ex.nota_matematica DESC,
+                        e.indice_academico DESC
+                ) AS lugar_escalafon,
+                e.carnet_identidad,
+                e.nombre_completo,
+                e.municipio,
+                e.indice_academico,
+                ex.nota_matematica AS mat,
+                ex.nota_espanol AS esp,
+                ex.nota_historia AS hist,
+                ROUND((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0, 2) AS prom_examenes,
+                ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS puntuacion_final
+            FROM estudiantes e
+            JOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante
+            ORDER BY lugar_escalafon ASC;
+        """.trimIndent()
+
+        isFacultad -> """
+            SELECT
+                e.matricula,
+                e.nombre AS estudiante,
+                m.nombre AS materia,
+                p.nombre AS profesor,
+                e.promedio
+            FROM estudiantes e
+            INNER JOIN materias m ON e.materia_id = m.id
+            INNER JOIN profesores p ON m.profesor_id = p.id
+            ORDER BY e.promedio DESC;
+        """.trimIndent()
+
+        isCuba -> """
+            SELECT
+                p.nombre AS provincia,
+                p.capital,
+                p.region,
+                l.nombre AS lugar_turistico,
+                l.tipo
+            FROM provincias p
+            LEFT JOIN lugares_interes l ON p.id = l.provincia_id
+            ORDER BY p.id ASC;
+        """.trimIndent()
+
+        isTienda -> """
+            SELECT
+                p.id AS pedido_num,
+                c.nombre AS cliente,
+                p.fecha,
+                p.total,
+                p.estado
+            FROM pedidos p
+            INNER JOIN clientes c ON p.cliente_id = c.id
+            ORDER BY p.id DESC
+            LIMIT 10;
+        """.trimIndent()
+
+        tableNames.isNotEmpty() -> """
+            SELECT * FROM "${tableNames.first()}"
+            LIMIT 20;
+        """.trimIndent()
+
+        else -> "-- Base de datos en blanco. Diseña una tabla o importa un archivo SQL para comenzar."
+    }
+}
+
+private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: List<String>): String {
+    val isOtorgamiento = activeDb.contains("otorgamiento", ignoreCase = true) ||
+            tableNames.contains("boletas_solicitud") ||
+            (tableNames.contains("estudiantes") && tableNames.contains("carreras"))
+    val isFacultad = (tableNames.contains("profesores") && tableNames.contains("materias")) ||
+            activeDb.contains("facultad", ignoreCase = true)
+    val isCuba = activeDb.contains("cuba", ignoreCase = true) || tableNames.contains("provincias")
+    val isTienda = tableNames.contains("clientes") || tableNames.contains("pedidos") ||
+            activeDb.contains("tienda", ignoreCase = true)
+    val firstTable = tableNames.firstOrNull() ?: "nueva_tabla"
+
+    return when (type) {
+        "create" -> """
+            CREATE TABLE IF NOT EXISTS nueva_tabla (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre TEXT NOT NULL,
+                descripcion TEXT,
+                valor REAL DEFAULT 0.0,
+                creado_en TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+        """.trimIndent()
+
+        "insert" -> when {
+            isOtorgamiento -> """
+                INSERT INTO estudiantes (
+                    carnet_identidad,
+                    carnet_preuniversitario,
+                    nombre_completo,
+                    sexo,
+                    via_ingreso,
+                    indice_academico,
+                    provincia,
+                    municipio,
+                    centro_estudio
+                ) VALUES (
+                    '950808${(10000..99999).random()}',
+                    '2026-036',
+                    'Alejandro Morales Cruz',
+                    'M',
+                    'Preuniversitario',
+                    96.20,
+                    'Holguín',
+                    'Moa',
+                    'IPU Antonio López Fernández'
+                );
+            """.trimIndent()
+
+            isFacultad -> """
+                INSERT INTO estudiantes (nombre, matricula, materia_id, promedio, ano_carrera)
+                VALUES ('Nuevo Alumno', 'EST-2026-${(100..999).random()}', 2, 95.0, 1);
+            """.trimIndent()
+
+            isCuba -> """
+                INSERT INTO lugares_interes (nombre, provincia_id, tipo, descripcion)
+                VALUES ('Cayo Saetía', 10, 'Natural', 'Parque natural con fauna exótica y playas vírgenes en Holguín.');
+            """.trimIndent()
+
+            isTienda -> """
+                INSERT INTO clientes (nombre, email, telefono, ciudad, saldo)
+                VALUES ('Eduardo Sanamé', 'eduardo@ejemplo.cu', '+53 52123456', 'Moa', 250.0);
+            """.trimIndent()
+
+            else -> """
+                INSERT INTO "$firstTable" DEFAULT VALUES;
+            """.trimIndent()
+        }
+
+        "select" -> when {
+            isOtorgamiento -> """
+                -- Boleta de Solicitud: Las 10 carreras elegidas por el estudiante #1
+                SELECT
+                    b.orden_prioridad AS prioridad,
+                    c.nombre_carrera AS carrera_solicitada,
+                    u.siglas AS universidad,
+                    u.provincia AS sede,
+                    a.nombre_agrupacion AS area
+                FROM boletas_solicitud b
+                INNER JOIN carreras c ON b.id_carrera = c.id_carrera
+                INNER JOIN universidades u ON c.id_universidad = u.id_universidad
+                INNER JOIN agrupaciones_carreras a ON c.id_agrupacion = a.id_agrupacion
+                WHERE b.id_estudiante = 1
+                ORDER BY b.orden_prioridad ASC;
+            """.trimIndent()
+
+            isFacultad -> """
+                SELECT id, matricula, nombre, materia_id, promedio
+                FROM estudiantes
+                ORDER BY promedio DESC
+                LIMIT 15;
+            """.trimIndent()
+
+            isCuba -> """
+                SELECT id, nombre, capital, region, poblacion
+                FROM provincias
+                ORDER BY id ASC;
+            """.trimIndent()
+
+            isTienda -> """
+                SELECT id, nombre, email, telefono, ciudad, saldo
+                FROM clientes
+                ORDER BY id ASC
+                LIMIT 15;
+            """.trimIndent()
+
+            else -> """
+                SELECT * FROM "$firstTable"
+                LIMIT 20;
+            """.trimIndent()
+        }
+
+        "join" -> when {
+            isOtorgamiento -> """
+                -- Otorgamiento Oficial: Cruce de Escalafón, Opción Alcanzada y Carrera Asignada
+                SELECT
+                    e.nombre_completo AS estudiante,
+                    ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS escalafon,
+                    o.prioridad_otorgada AS opcion_alcanzada,
+                    c.nombre_carrera AS carrera_otorgada,
+                    u.siglas AS universidad,
+                    o.estado
+                FROM otorgamientos o
+                INNER JOIN estudiantes e ON o.id_estudiante = e.id_estudiante
+                INNER JOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante
+                INNER JOIN plazas_oferta p ON o.id_plaza = p.id_plaza
+                INNER JOIN carreras c ON p.id_carrera = c.id_carrera
+                INNER JOIN universidades u ON p.id_universidad = u.id_universidad
+                ORDER BY escalafon DESC;
+            """.trimIndent()
+
+            isFacultad -> """
+                SELECT
+                    e.matricula,
+                    e.nombre AS estudiante,
+                    m.nombre AS materia,
+                    p.nombre AS profesor,
+                    e.promedio
+                FROM estudiantes e
+                INNER JOIN materias m ON e.materia_id = m.id
+                INNER JOIN profesores p ON m.profesor_id = p.id
+                ORDER BY e.promedio DESC;
+            """.trimIndent()
+
+            isCuba -> """
+                SELECT
+                    p.nombre AS provincia,
+                    p.capital,
+                    l.nombre AS atractivo_turistico,
+                    l.tipo
+                FROM provincias p
+                INNER JOIN lugares_interes l ON p.id = l.provincia_id
+                ORDER BY p.nombre ASC;
+            """.trimIndent()
+
+            isTienda -> """
+                SELECT
+                    p.id AS pedido_id,
+                    c.nombre AS cliente,
+                    c.ciudad,
+                    p.fecha,
+                    p.total,
+                    p.estado
+                FROM pedidos p
+                INNER JOIN clientes c ON p.cliente_id = c.id
+                ORDER BY p.id DESC;
+            """.trimIndent()
+
+            else -> """
+                SELECT * FROM "$firstTable"
+                LIMIT 20;
+            """.trimIndent()
+        }
+
+        "group" -> when {
+            isOtorgamiento -> """
+                -- Demanda de Carreras: Solicitudes en 1ra opción vs. total en las 10 opciones
+                SELECT
+                    c.nombre_carrera AS carrera,
+                    u.siglas AS universidad,
+                    COUNT(CASE WHEN b.orden_prioridad = 1 THEN 1 END) AS solicitudes_1ra_opcion,
+                    COUNT(CASE WHEN b.orden_prioridad <= 3 THEN 1 END) AS en_primeras_3_opciones,
+                    COUNT(b.id_boleta) AS total_menciones_en_boletas
+                FROM carreras c
+                INNER JOIN universidades u ON c.id_universidad = u.id_universidad
+                LEFT JOIN boletas_solicitud b ON c.id_carrera = b.id_carrera
+                GROUP BY c.id_carrera, c.nombre_carrera, u.siglas
+                ORDER BY solicitudes_1ra_opcion DESC, total_menciones_en_boletas DESC;
+            """.trimIndent()
+
+            isFacultad -> """
+                SELECT
+                    m.nombre AS materia,
+                    COUNT(e.id) AS total_estudiantes,
+                    ROUND(AVG(e.promedio), 2) AS promedio_materia
+                FROM materias m
+                LEFT JOIN estudiantes e ON m.id = e.materia_id
+                GROUP BY m.id, m.nombre
+                ORDER BY promedio_materia DESC;
+            """.trimIndent()
+
+            isCuba -> """
+                SELECT
+                    p.region,
+                    COUNT(p.id) AS cantidad_provincias,
+                    SUM(p.poblacion) AS poblacion_total
+                FROM provincias p
+                GROUP BY p.region
+                ORDER BY poblacion_total DESC;
+            """.trimIndent()
+
+            isTienda -> """
+                SELECT
+                    c.ciudad,
+                    COUNT(c.id) AS cantidad_clientes,
+                    ROUND(AVG(c.saldo), 2) AS saldo_medio
+                FROM clientes c
+                GROUP BY c.ciudad
+                ORDER BY cantidad_clientes DESC;
+            """.trimIndent()
+
+            else -> """
+                SELECT COUNT(*) AS total_filas FROM "$firstTable";
+            """.trimIndent()
+        }
+
+        else -> "SELECT * FROM \"$firstTable\" LIMIT 10;"
+    }
+}
+

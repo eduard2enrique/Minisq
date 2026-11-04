@@ -3,8 +3,16 @@ package com.example.ui.screens
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,20 +22,31 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ArrowDropDown
@@ -46,10 +65,15 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Assignment
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.DesignServices
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.Today
 import androidx.compose.material.icons.outlined.UploadFile
+import com.example.ui.components.SpreadsheetImportDialog
+import com.example.data.SpreadsheetImporter
+import com.example.data.ParsedSheet
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -131,18 +155,77 @@ fun TablesScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedTableName by remember { mutableStateOf<String?>(null) }
+    var viewMode by remember { mutableStateOf("diseno") } // "diseno" (default) or "datos"
+    var showTableSqlCollapsible by remember { mutableStateOf(false) }
 
-    BackHandler(enabled = selectedTableName != null) {
-        selectedTableName = null
+    // Direct file import launchers inside Tables without navigating away
+    val spreadsheetImporter = remember { SpreadsheetImporter(context) }
+    var pendingSheetsForImport by remember { mutableStateOf<List<ParsedSheet>?>(null) }
+    var isImportingSpreadsheet by remember { mutableStateOf(false) }
+
+    val pickSpreadsheetLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    val parseResult = spreadsheetImporter.parseSpreadsheet(uri)
+                    if (parseResult.isSuccess) {
+                        val sheets = parseResult.getOrNull().orEmpty()
+                        if (sheets.isNotEmpty()) {
+                            pendingSheetsForImport = sheets
+                        } else {
+                            Toast.makeText(context, "No se encontraron hojas de cálculo en el archivo.", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Toast.makeText(context, "Error al leer archivo: ${parseResult.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Error al procesar libro: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    val pickSqlLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        val sql = stream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                        val res = dbManager.executeSql(sql)
+                        if (res.isSuccess) {
+                            onRefreshTables()
+                            Toast.makeText(context, "Estructura SQL importada exitosamente.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Error en SQL: ${res.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "Error al leer archivo: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    BackHandler(enabled = selectedTableName != null || viewMode != "diseno") {
+        if (selectedTableName != null) {
+            selectedTableName = null
+        } else {
+            viewMode = "diseno"
+        }
     }
 
     // Table detail state
     var selectedTableSchema by remember { mutableStateOf<TableSchemaDetail?>(null) }
     var tableDataResult by remember { mutableStateOf<SqlExecutionResult?>(null) }
-    var selectedDetailTab by remember { mutableIntStateOf(0) } // 0: Datos, 1: Estructura, 2: SQL DDL
     var isLoadingData by remember { mutableStateOf(false) }
 
     // Dialog state
+    var showNewTableDialog by remember { mutableStateOf(false) }
+    var showEmptyStateInfoDialog by remember { mutableStateOf(false) }
     var showInsertRowDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showDropConfirmDialog by remember { mutableStateOf(false) }
@@ -187,7 +270,7 @@ fun TablesScreen(
     ) {
         if (selectedTableName == null) {
             if (tables.isEmpty()) {
-                // Empty state matching the user's mockup
+                // Empty state matching the user's mockup with well-organized cards and explanations
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -204,7 +287,7 @@ fun TablesScreen(
                         Icon(
                             imageVector = Icons.Outlined.Storage,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onBackground,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
@@ -219,46 +302,61 @@ fun TablesScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 36.dp),
+                            .padding(bottom = 20.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Base ",
+                            text = "Base: ",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         val cleanDb = activeDbName.removeSuffix(".db")
                         val dynamicFontSize = when {
                             cleanDb.length > 22 -> 11.5.sp
-                            cleanDb.length > 15 -> 13.sp
+                            cleanDb.length > 15 -> 12.5.sp
                             else -> 14.sp
                         }
                         Text(
-                            text = cleanDb,
+                            text = cleanDb.replace("_", "_\u200B"),
                             style = MaterialTheme.typography.bodyMedium.copy(fontSize = dynamicFontSize),
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onBackground,
-                            maxLines = 1,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Text(
-                            text = " · todavía sin tablas",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = "Sin tablas",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Hero Icon & Title
+                    Box(
+                        modifier = Modifier
+                            .size(68.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.TableChart,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(34.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    // Large clipboard icon
-                    Icon(
-                        imageVector = Icons.Outlined.Assignment,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
-                        modifier = Modifier.size(76.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
                         text = "Base de datos lista",
@@ -267,203 +365,423 @@ fun TablesScreen(
                         color = MaterialTheme.colorScheme.onBackground
                     )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "Elige cómo quieres crear tu primera tabla.",
+                        text = "Elige cómo quieres crear tu primera tabla:",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Spacer(modifier = Modifier.height(28.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    // Button 1: + Crear tabla
-                    Button(
-                        onClick = onNavigateToDesigner,
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                        modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                            .height(48.dp)
-                            .testTag("empty_state_create_table_btn")
+                    // Botón para abrir el diálogo explicativo
+                    OutlinedButton(
+                        onClick = { showEmptyStateInfoDialog = true },
+                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.height(34.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f))
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.Add,
+                            imageVector = Icons.Outlined.Info,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(14.dp),
+                            tint = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Crear tabla",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold
+                            text = "💡 Guía: ¿Cuál opción elegir?",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
 
-                    // Button 2: Importar CSV / Excel
-                    FilledTonalButton(
-                        onClick = onNavigateToImport,
-                        shape = RoundedCornerShape(24.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                            contentColor = MaterialTheme.colorScheme.onSurface
+                    // Option 1: Card Diseñar Tabla Visualmente (Ahora responde inmediatamente)
+                    Card(
+                        onClick = { showNewTableDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth(0.95f)
+                            .testTag("empty_state_create_table_btn"),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
                         ),
-                        modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                            .height(48.dp)
-                            .testTag("empty_state_import_btn")
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.UploadFile,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Importar CSV / Excel",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Button 3: >_ Crear con SQL
-                    TextButton(
-                        onClick = {
-                            val starterSql = "-- Crear primera tabla en ${activeDbName.removeSuffix(".db")} (segura contra duplicados)\nCREATE TABLE IF NOT EXISTS \"mi_primera_tabla\" (\n  \"id\" INTEGER PRIMARY KEY AUTOINCREMENT,\n  \"nombre\" TEXT NOT NULL,\n  \"fecha_creacion\" TEXT DEFAULT CURRENT_TIMESTAMP\n);\n\n-- Inserción segura que no falla al re-ejecutar:\nINSERT OR IGNORE INTO \"mi_primera_tabla\" (\"id\", \"nombre\")\nVALUES (1, 'Primer Registro');\n\nSELECT * FROM \"mi_primera_tabla\";\n"
-                            onNavigateToSql(starterSql)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth(0.85f)
-                            .heightIn(min = 48.dp)
-                            .testTag("empty_state_sql_btn")
-                    ) {
-                        Text(
-                            text = ">_ ",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Crear con SQL",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            } else {
-                // Table Overview List
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        placeholder = { Text("Buscar tablas en ${activeDbName.removeSuffix(".db")}...", style = MaterialTheme.typography.bodySmall) },
-                        leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 52.dp)
-                            .padding(end = 8.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onRefreshTables) {
-                            Icon(Icons.Outlined.Refresh, contentDescription = "Actualizar")
-                        }
-                        if (onResetCurrentDb != null) {
-                            IconButton(
-                                onClick = { showResetConfirmDialog = true },
-                                modifier = Modifier.testTag("reset_db_header_btn")
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Outlined.RestartAlt,
-                                    contentDescription = "Restablecer de fábrica",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    imageVector = Icons.Outlined.DesignServices,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Diseñar tabla visualmente",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                    ) {
+                                        Text(
+                                            text = "Recomendado",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = "Define columnas, tipos de datos (INTEGER, TEXT, REAL) y claves primarias/foráneas en el editor interactivo.",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, lineHeight = 16.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Option 2: Card Importar CSV / Excel
+                    Card(
+                        onClick = {
+                            pickSpreadsheetLauncher.launch(
+                                arrayOf(
+                                    "text/csv",
+                                    "application/vnd.ms-excel",
+                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    "*/*"
+                                )
+                            )
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth(0.95f)
+                            .testTag("empty_state_import_btn"),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF10B981).copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.UploadFile,
+                                    contentDescription = null,
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Importar desde Excel / CSV",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = "Genera la tabla y sus registros automáticamente a partir de un archivo .xlsx, .xls o .csv en tu teléfono.",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, lineHeight = 16.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Option 3: Card Cargar archivo SQL
+                    Card(
+                        onClick = {
+                            pickSqlLauncher.launch(arrayOf("text/plain", "application/sql", "text/sql", "*/*"))
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth(0.95f)
+                            .testTag("empty_state_sql_btn"),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF8B5CF6).copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Code,
+                                    contentDescription = null,
+                                    tint = Color(0xFF7C3AED),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Cargar archivo de sentencias (.sql)",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = "Ejecuta un script .sql o .txt con sentencias CREATE TABLE e INSERT para crear tu estructura.",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp, lineHeight = 16.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(28.dp))
+                }
+            } else {
+                // Top Segmented Switcher: [ 📐 Vista Diseño (Por Defecto) | 📊 Vista Datos ]
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(11.dp))
+                                .clickable { viewMode = "diseno" }
+                                .testTag("tab_mode_diseno"),
+                            color = if (viewMode == "diseno") MaterialTheme.colorScheme.surface else Color.Transparent,
+                            shape = RoundedCornerShape(11.dp),
+                            border = if (viewMode == "diseno") BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)) else null,
+                            tonalElevation = if (viewMode == "diseno") 2.dp else 0.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 7.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.DesignServices,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (viewMode == "diseno") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Vista Diseño",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (viewMode == "diseno") FontWeight.Bold else FontWeight.Medium,
+                                    color = if (viewMode == "diseno") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(11.dp))
+                                .clickable { viewMode = "datos" }
+                                .testTag("tab_mode_datos"),
+                            color = if (viewMode == "datos") MaterialTheme.colorScheme.surface else Color.Transparent,
+                            shape = RoundedCornerShape(11.dp),
+                            border = if (viewMode == "datos") BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)) else null,
+                            tonalElevation = if (viewMode == "datos") 2.dp else 0.dp
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(vertical = 7.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.TableChart,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (viewMode == "datos") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Vista Datos",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (viewMode == "datos") FontWeight.Bold else FontWeight.Medium,
+                                    color = if (viewMode == "datos") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (filteredTables.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            "No se encontraron tablas que coincidan con \"$searchQuery\".",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                if (viewMode == "diseno") {
+                    // Vista Diseño (Por defecto): Diagrama ER interactivo con relaciones y botón de crear tabla
+                    DesignerScreen(
+                        dbManager = dbManager,
+                        onRefreshTables = onRefreshTables,
+                        onResetCurrentDb = onResetCurrentDb,
+                        onSelectTable = { tName ->
+                            selectedTableName = tName
+                            viewMode = "datos"
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 20.dp)
+                    // Vista Datos: Búsqueda y listado de tablas para inspección de filas
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                    items(filteredTables) { table ->
-                        Card(
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Buscar en tablas...", style = MaterialTheme.typography.bodySmall) },
+                            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedTableName = table.name },
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(14.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
+                                .weight(1f)
+                                .heightIn(min = 52.dp)
+                                .padding(end = 8.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            shape = RoundedCornerShape(10.dp)
+                        )
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = onRefreshTables) {
+                                Icon(Icons.Outlined.Refresh, contentDescription = "Actualizar")
+                            }
+                            if (onResetCurrentDb != null) {
+                                IconButton(
+                                    onClick = { showResetConfirmDialog = true },
+                                    modifier = Modifier.testTag("reset_db_header_btn")
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Outlined.TableChart,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(24.dp)
+                                        imageVector = Icons.Outlined.RestartAlt,
+                                        contentDescription = "Restablecer de fábrica",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            text = table.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "${table.rowCount} filas • ${table.columnCount} columnas",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (filteredTables.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                "No se encontraron tablas que coincidan con \"$searchQuery\".",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 20.dp)
+                        ) {
+                            items(filteredTables) { table ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectedTableName = table.name },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.TableChart,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column {
+                                                Text(
+                                                    text = table.name,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "${table.rowCount} filas • ${table.columnCount} columnas",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                        Text("Ver datos ➔", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                                     }
                                 }
-                                Text("Ver detalles ➔", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
                 }
             }
-        }
-    } else {
-        // Selected Table Detail View
+        } else {
+            // Selected Table Detail View (Data View direct with Collapsible SQL & Column chips)
             val tableName = selectedTableName!!
             val schema = selectedTableSchema
 
@@ -474,7 +792,7 @@ fun TablesScreen(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f, fill = false).padding(end = 6.dp)
+                    modifier = Modifier.weight(1f, fill = false).padding(end = 4.dp)
                 ) {
                     IconButton(onClick = {
                         selectedTableName = null
@@ -502,48 +820,246 @@ fun TablesScreen(
                     }
                 }
 
-                IconButton(
-                    onClick = { loadTableData(tableName, showFeedback = true) },
-                    modifier = Modifier.testTag("reload_table_data_btn")
-                ) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = "Recargar datos de la tabla")
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Collapsible SQL DDL & INSERTs Button
+                    FilledTonalButton(
+                        onClick = { showTableSqlCollapsible = !showTableSqlCollapsible },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = if (showTableSqlCollapsible) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Code,
+                            contentDescription = null,
+                            modifier = Modifier.size(15.dp),
+                            tint = if (showTableSqlCollapsible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (showTableSqlCollapsible) "Ocultar SQL" else "SQL DDL + INSERTs",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Icon(
+                            imageVector = if (showTableSqlCollapsible) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { loadTableData(tableName, showFeedback = true) },
+                        modifier = Modifier.testTag("reload_table_data_btn")
+                    ) {
+                        Icon(Icons.Outlined.Refresh, contentDescription = "Recargar datos de la tabla")
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Sub-tabs: Datos, Estructura, SQL DDL
-            TabRow(
-                selectedTabIndex = selectedDetailTab,
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.primary
+            // Collapsible SQL Card (CREATE TABLE + all row INSERT INTO statements)
+            AnimatedVisibility(
+                visible = showTableSqlCollapsible,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
             ) {
-                Tab(
-                    selected = selectedDetailTab == 0,
-                    onClick = { selectedDetailTab = 0 },
-                    text = { Text("Datos") }
-                )
-                Tab(
-                    selected = selectedDetailTab == 1,
-                    onClick = { selectedDetailTab = 1 },
-                    text = { Text("Estructura") }
-                )
-                Tab(
-                    selected = selectedDetailTab == 2,
-                    onClick = { selectedDetailTab = 2 },
-                    text = { Text("SQL DDL") }
-                )
+                val fullSql = remember(schema, tableDataResult) {
+                    buildString {
+                        append("-- DDL Estructura de la tabla\n")
+                        append((schema?.createSql ?: "CREATE TABLE \"$tableName\";").trim())
+                        append(";\n\n")
+                        val rows = tableDataResult?.rows.orEmpty()
+                        val cols = tableDataResult?.columns.orEmpty()
+                        if (rows.isNotEmpty() && cols.isNotEmpty()) {
+                            append("-- Registros (${rows.size} filas generadas)\n")
+                            val colsJoined = cols.joinToString(", ") { "\"$it\"" }
+                            rows.forEach { r ->
+                                val valsJoined = r.joinToString(", ") { v ->
+                                    if (v.isEmpty() || v == "NULL") "NULL"
+                                    else if (v.toDoubleOrNull() != null) v
+                                    else "'${v.replace("'", "''")}'"
+                                }
+                                append("INSERT INTO \"$tableName\" ($colsJoined) VALUES ($valsJoined);\n")
+                            }
+                        }
+                    }
+                }
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Código SQLite (DDL + INSERT INTO):",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Button(
+                                onClick = {
+                                    val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                    cb.setPrimaryClip(ClipData.newPlainText("SQL $tableName", fullSql))
+                                    Toast.makeText(context, "SQL completo (DDL + INSERTs) copiado", Toast.LENGTH_SHORT).show()
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Icon(Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Copiar SQL", style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp))
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 140.dp)
+                                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
+                                .padding(8.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(
+                                text = fullSql,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.5.sp,
+                                    lineHeight = 15.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            // Direct Column Management Chips (Allows deleting any column directly from table view)
+            if (schema != null && schema.columns.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Campos:",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    LazyRow(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        items(schema.columns) { col ->
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (col.isPrimaryKey) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (col.isPrimaryKey) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (col.isPrimaryKey) {
+                                        Icon(Icons.Outlined.Key, contentDescription = "PK", tint = Color(0xFFFBBF24), modifier = Modifier.size(12.dp))
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                    }
+                                    Text(
+                                        text = "${col.name} (${col.type.ifBlank { "TEXT" }})",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                        fontWeight = if (col.isPrimaryKey) FontWeight.Bold else FontWeight.Medium
+                                    )
+                                    if (!col.isPrimaryKey) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = Icons.Outlined.Close,
+                                            contentDescription = "Eliminar campo ${col.name}",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier
+                                                .size(14.dp)
+                                                .clip(CircleShape)
+                                                .clickable { columnToDelete = col.name }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        item {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                                modifier = Modifier.clickable { showAddColumnDialog = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Outlined.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(13.dp))
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text("+ Campo", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
+                    // Table options dropdown
+                    var showTableOptionsDropdown by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(
+                            onClick = { showTableOptionsDropdown = true },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Outlined.MoreVert, contentDescription = "Opciones de tabla", modifier = Modifier.size(18.dp))
+                        }
+                        DropdownMenu(
+                            expanded = showTableOptionsDropdown,
+                            onDismissRequest = { showTableOptionsDropdown = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Vaciar Filas") },
+                                leadingIcon = { Icon(Icons.Outlined.CleaningServices, contentDescription = null) },
+                                onClick = {
+                                    showTableOptionsDropdown = false
+                                    showDeleteConfirmDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Eliminar Tabla", color = MaterialTheme.colorScheme.error) },
+                                leadingIcon = { Icon(Icons.Outlined.DeleteOutline, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    showTableOptionsDropdown = false
+                                    showDropConfirmDialog = true
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
 
             if (isLoadingData) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             } else {
-                when (selectedDetailTab) {
-                    0 -> {
                         // Data View
                         val data = tableDataResult
                         if (data == null || data.rows.isEmpty()) {
@@ -935,205 +1451,6 @@ fun TablesScreen(
                                 )
                             }
                         }
-                    }
-
-                    1 -> {
-                        // Structure View
-                        if (schema != null) {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                item {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "Columnas (${schema.columns.size})",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold
-                                        )
-
-                                        Button(
-                                            onClick = { showAddColumnDialog = true },
-                                            shape = RoundedCornerShape(10.dp),
-                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                                        ) {
-                                            Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Añadir Columna", style = MaterialTheme.typography.labelSmall)
-                                        }
-                                    }
-                                }
-                                items(schema.columns) { col ->
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                if (col.isPrimaryKey) {
-                                                    Icon(
-                                                        imageVector = Icons.Outlined.Key,
-                                                        contentDescription = "PK",
-                                                        tint = SqlWarning,
-                                                        modifier = Modifier.size(16.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                }
-                                                Column {
-                                                    Text(
-                                                        text = col.name,
-                                                        fontWeight = FontWeight.Bold,
-                                                        style = MaterialTheme.typography.bodyMedium
-                                                    )
-                                                    if (!col.defaultValue.isNullOrBlank()) {
-                                                        Text(
-                                                            text = "default: ${col.defaultValue}",
-                                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-                                                    }
-                                                }
-                                            }
-
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Surface(
-                                                    shape = RoundedCornerShape(4.dp),
-                                                    color = MaterialTheme.colorScheme.primaryContainer
-                                                ) {
-                                                    Text(
-                                                        text = col.type.ifBlank { "TEXT" },
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                    )
-                                                }
-                                                if (col.notNull) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(4.dp),
-                                                        color = MaterialTheme.colorScheme.secondaryContainer
-                                                    ) {
-                                                        Text(
-                                                            text = "NOT NULL",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-                                                }
-
-                                                // Delete Column Button
-                                                IconButton(
-                                                    onClick = { columnToDelete = col.name },
-                                                    modifier = Modifier
-                                                        .size(34.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.12f))
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Outlined.DeleteOutline,
-                                                        contentDescription = "Eliminar columna",
-                                                        tint = MaterialTheme.colorScheme.error,
-                                                        modifier = Modifier.size(17.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (schema.foreignKeys.isNotEmpty()) {
-                                    item {
-                                        Spacer(modifier = Modifier.height(10.dp))
-                                        Text("Claves Foráneas (Relaciones)", style = MaterialTheme.typography.titleSmall)
-                                    }
-                                    items(schema.foreignKeys) { fk ->
-                                        Card(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                                        ) {
-                                            Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Outlined.Link, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                                Text("${fk.fromColumn} ➔ ${fk.targetTable}(${fk.toColumn})", style = MaterialTheme.typography.bodySmall)
-                                            }
-                                        }
-                                    }
-                                }
-
-                                item {
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        OutlinedButton(
-                                            onClick = { showDeleteConfirmDialog = true },
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text("Vaciar Filas")
-                                        }
-
-                                        Button(
-                                            onClick = { showDropConfirmDialog = true },
-                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text("Eliminar Tabla")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    2 -> {
-                        // SQL DDL View
-                        val createSql = schema?.createSql ?: "-- No hay DDL disponible"
-                        Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text("Definición SQLite:", style = MaterialTheme.typography.titleSmall)
-                                IconButton(onClick = {
-                                    val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                    cb.setPrimaryClip(ClipData.newPlainText("SQL DDL", createSql))
-                                    Toast.makeText(context, "DDL copiado al portapapeles", Toast.LENGTH_SHORT).show()
-                                }) {
-                                    Icon(Icons.Outlined.ContentCopy, contentDescription = "Copiar SQL")
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = createSql,
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-                                    .padding(12.dp)
-                            )
-                        }
-                    }
-                }
             }
         }
     }
@@ -1168,23 +1485,54 @@ fun TablesScreen(
             }
         }
 
+        val handleSaveAndAddAnother: () -> Unit = {
+            scope.launch {
+                isInserting = true
+                val success = dbManager.insertTableRow(schema.tableName, inputValues.toMap())
+                isInserting = false
+                if (success) {
+                    loadTableData(schema.tableName)
+                    inputValues.clear()
+                    Toast.makeText(context, "Registro insertado. Listo para el siguiente.", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Error al insertar registro.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        val handleSaveAndClose: () -> Unit = {
+            scope.launch {
+                isInserting = true
+                val success = dbManager.insertTableRow(schema.tableName, inputValues.toMap())
+                isInserting = false
+                if (success) {
+                    loadTableData(schema.tableName)
+                    showInsertRowDialog = false
+                    Toast.makeText(context, "Registro guardado exitosamente.", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Error al insertar registro.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
         Dialog(
             onDismissRequest = { if (!isInserting) showInsertRowDialog = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.65f))
-                    .safeDrawingPadding()
-                    .imePadding()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .windowInsetsPadding(WindowInsets.ime)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .fillMaxHeight(0.95f),
+                        .fillMaxHeight(0.92f),
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
@@ -1192,8 +1540,9 @@ fun TablesScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(16.dp)
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
                     ) {
+                        // Header Row: Title & Close Button
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -1207,9 +1556,9 @@ fun TablesScreen(
                                     imageVector = Icons.Outlined.Add,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier.size(20.dp)
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 val tName = schema.tableName
                                 val dynamicTitleSize = when {
                                     tName.length > 20 -> 13.sp
@@ -1226,6 +1575,52 @@ fun TablesScreen(
                             }
                             IconButton(onClick = { showInsertRowDialog = false }) {
                                 Icon(Icons.Outlined.Close, contentDescription = "Cerrar")
+                            }
+                        }
+
+                        // PINNED TOP ACTION BAR: GUARANTEED VISIBLE, NEVER BLOCKED BY NAVIGATION BAR OR KEYBOARD!
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedButton(
+                                    onClick = handleSaveAndAddAnother,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp)
+                                        .testTag("top_save_and_add_another_btn"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    enabled = !isInserting
+                                ) {
+                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Insertar ++", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
+
+                                Button(
+                                    onClick = handleSaveAndClose,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp)
+                                        .testTag("top_save_row_btn"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    enabled = !isInserting
+                                ) {
+                                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Insertar", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
                             }
                         }
 
@@ -1443,79 +1838,6 @@ fun TablesScreen(
                             }
                         }
 
-                        // Permanently Anchored Bottom Action Bar: Always Elevated, Solid, and Visible Above Keyboard
-                        Surface(
-                            color = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 8.dp,
-                            shadowElevation = 8.dp,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        scope.launch {
-                                            isInserting = true
-                                            val success = dbManager.insertTableRow(schema.tableName, inputValues.toMap())
-                                            isInserting = false
-                                            if (success) {
-                                                loadTableData(schema.tableName)
-                                                inputValues.clear()
-                                                Toast.makeText(context, "Registro insertado. Listo para el siguiente.", Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                Toast.makeText(context, "Error al insertar registro.", Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .heightIn(min = 48.dp)
-                                        .testTag("save_and_add_another_btn"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    enabled = !isInserting
-                                ) {
-                                    Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Guardar ++", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                }
-
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            isInserting = true
-                                            val success = dbManager.insertTableRow(schema.tableName, inputValues.toMap())
-                                            isInserting = false
-                                            if (success) {
-                                                loadTableData(schema.tableName)
-                                                showInsertRowDialog = false
-                                                Toast.makeText(context, "Registro guardado exitosamente.", Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                Toast.makeText(context, "Error al insertar registro.", Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .heightIn(min = 48.dp)
-                                        .testTag("save_row_btn"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    enabled = !isInserting
-                                ) {
-                                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Guardar", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -1541,23 +1863,39 @@ fun TablesScreen(
         }
         var isUpdating by remember { mutableStateOf(false) }
 
+        val handleSaveEdit: () -> Unit = {
+            scope.launch {
+                isUpdating = true
+                val success = dbManager.updateTableRow(schema.tableName, pkCol, pkVal, editInputValues.toMap())
+                isUpdating = false
+                if (success) {
+                    loadTableData(schema.tableName)
+                    editingRowIndex = null
+                    Toast.makeText(context, "Registro actualizado exitosamente.", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Error al actualizar registro.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
         Dialog(
             onDismissRequest = { if (!isUpdating) editingRowIndex = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
+            properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.65f))
-                    .safeDrawingPadding()
-                    .imePadding()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .windowInsetsPadding(WindowInsets.ime)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .fillMaxHeight(0.95f),
+                        .fillMaxHeight(0.92f),
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
@@ -1600,6 +1938,50 @@ fun TablesScreen(
                             }
                             IconButton(onClick = { editingRowIndex = null }) {
                                 Icon(Icons.Outlined.Close, contentDescription = "Cerrar")
+                            }
+                        }
+
+                        // Cabecera Superior con Botones Fijos de Acción Inmediata (a prueba de teclados y barras de sistema)
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedButton(
+                                    onClick = { editingRowIndex = null },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp)
+                                        .testTag("top_cancel_edit_row_btn"),
+                                    shape = RoundedCornerShape(8.dp),
+                                    enabled = !isUpdating
+                                ) {
+                                    Text("Cancelar", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                                }
+
+                                Button(
+                                    onClick = handleSaveEdit,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp)
+                                        .testTag("top_save_edit_row_btn"),
+                                    shape = RoundedCornerShape(8.dp),
+                                    enabled = !isUpdating
+                                ) {
+                                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Guardar", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                                }
                             }
                         }
 
@@ -1689,64 +2071,6 @@ fun TablesScreen(
                             }
                         }
 
-                        // Permanently Anchored Bottom Action Bar: Always Elevated, Solid, and Visible Above Keyboard
-                        Surface(
-                            color = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 6.dp,
-                            shadowElevation = 8.dp,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedButton(
-                                    onClick = { editingRowIndex = null },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .heightIn(min = 50.dp)
-                                        .testTag("cancel_edit_row_btn"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    enabled = !isUpdating
-                                ) {
-                                    Text("Cancelar", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                                }
-
-                                Button(
-                                    onClick = {
-                                        scope.launch {
-                                            isUpdating = true
-                                            val success = dbManager.updateTableRow(schema.tableName, pkCol, pkVal, editInputValues.toMap())
-                                            isUpdating = false
-                                            if (success) {
-                                                loadTableData(schema.tableName)
-                                                editingRowIndex = null
-                                                Toast.makeText(context, "Registro actualizado exitosamente.", Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                Toast.makeText(context, "Error al actualizar registro.", Toast.LENGTH_LONG).show()
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .heightIn(min = 50.dp)
-                                        .testTag("save_edit_row_btn"),
-                                    shape = RoundedCornerShape(12.dp),
-                                    enabled = !isUpdating
-                                ) {
-                                    Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Guardar Cambios", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -2088,6 +2412,155 @@ fun TablesScreen(
             dismissButton = {
                 TextButton(onClick = { showResetConfirmDialog = false }) {
                     Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    // Modal Spreadsheet Import Preview & Config Dialog (Direct without navigating away)
+    pendingSheetsForImport?.let { sheets ->
+        SpreadsheetImportDialog(
+            sheets = sheets,
+            existingTables = tables.map { it.name },
+            isImporting = isImportingSpreadsheet,
+            onConfirmImport = { sheet, tableName, headers, types, createNew ->
+                isImportingSpreadsheet = true
+                scope.launch {
+                    val db = dbManager.getActiveDatabase()
+                    val result = spreadsheetImporter.importSheetToDatabase(
+                        db = db,
+                        sheet = sheet,
+                        tableName = tableName,
+                        headersToUse = headers,
+                        typesToUse = types,
+                        createNewTable = createNew
+                    )
+                    isImportingSpreadsheet = false
+                    pendingSheetsForImport = null
+                    Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                    if (result.isSuccess) {
+                        onRefreshTables()
+                    }
+                }
+            },
+            onDismiss = { pendingSheetsForImport = null }
+        )
+    }
+
+    // Modal New Table Designer Dialog (Direct visual table creator with Cancelar and Guardar)
+    if (showNewTableDialog) {
+        NewTableDesignerDialog(
+            existingTables = tables.map { it.name },
+            allSchemas = emptyList(),
+            onCreateTable = { ddlSql ->
+                scope.launch {
+                    val res = dbManager.executeSql(ddlSql)
+                    if (res.isSuccess) {
+                        onRefreshTables()
+                        showNewTableDialog = false
+                        Toast.makeText(context, "Tabla creada exitosamente.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Error al crear tabla: ${res.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+            },
+            onDismiss = { showNewTableDialog = false }
+        )
+    }
+
+    // Modal Pequeño Diálogo Explicativo: Guía de Creación de Tablas
+    if (showEmptyStateInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showEmptyStateInfoDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "¿Cómo crear tu primera tabla?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = "1. Diseñar Tabla (Recomendado)",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Elige el nombre de la tabla, añade columnas con tipos de datos (INTEGER, TEXT, REAL) y marca claves primarias (PK) o autoincremento con un editor visual guiado.",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF10B981).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.35f))
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = "2. Importar CSV / Excel",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF059669)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Si ya tienes datos en una hoja de cálculo, MiniSQL Pro creará la estructura y poblará todos los registros en segundos sin escribir sentencias.",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFF8B5CF6).copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.35f))
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = "3. Cargar Archivo SQL",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF7C3AED)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Para scripts .sql creados en clase o exportados, ejecuta directamente el archivo con sentencias CREATE TABLE e INSERT.",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showEmptyStateInfoDialog = false }) {
+                    Text("Entendido")
                 }
             }
         )

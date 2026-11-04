@@ -32,7 +32,7 @@ class DatabaseManager(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("minisql_db_templates", Context.MODE_PRIVATE)
 
-    private var currentDbName: String = "facultad_ciencias.db"
+    private var currentDbName: String = "otorgamiento_carreras.db"
     private var activeDatabase: SQLiteDatabase? = null
 
     init {
@@ -40,6 +40,19 @@ class DatabaseManager(private val context: Context) {
     }
 
     private fun ensureInitialDatabase() {
+        val otorgamientoFile = File(dbDir, "otorgamiento_carreras.db")
+        val currentOtorgamientoVer = prefs.getInt("otorgamiento_db_ver", 0)
+        val TARGET_OTORGAMIENTO_VER = 3
+        if (!otorgamientoFile.exists() || currentOtorgamientoVer < TARGET_OTORGAMIENTO_VER) {
+            if (otorgamientoFile.exists()) {
+                otorgamientoFile.delete()
+            }
+            createSampleOtorgamientoCarreras(otorgamientoFile)
+            prefs.edit()
+                .putString("template_otorgamiento_carreras.db", "otorgamiento_carreras")
+                .putInt("otorgamiento_db_ver", TARGET_OTORGAMIENTO_VER)
+                .apply()
+        }
         val facultadFile = File(dbDir, "facultad_ciencias.db")
         if (!facultadFile.exists()) {
             createSampleFacultadCiencias(facultadFile)
@@ -103,6 +116,7 @@ class DatabaseManager(private val context: Context) {
         if (file.exists()) return false
 
         when (template) {
+            "otorgamiento_carreras", "ingreso_superior" -> createSampleOtorgamientoCarreras(file)
             "facultad_ciencias", "centro_estudiantil" -> createSampleFacultadCiencias(file)
             "cuba" -> createSampleCuba(file)
             "ecommerce" -> createSampleEcommerce(file)
@@ -138,6 +152,7 @@ class DatabaseManager(private val context: Context) {
         // Determine template from saved prefs or name heuristics
         val storedTemplate = prefs.getString("template_$dbName", null)
         val template = storedTemplate ?: when {
+            dbName.contains("otorgamiento", ignoreCase = true) || dbName.contains("carrera", ignoreCase = true) || dbName.contains("ingreso", ignoreCase = true) -> "otorgamiento_carreras"
             dbName.contains("facultad", ignoreCase = true) || dbName.contains("centro", ignoreCase = true) || dbName.contains("estudiantil", ignoreCase = true) || dbName.contains("ciencia", ignoreCase = true) -> "facultad_ciencias"
             dbName.contains("cuba", ignoreCase = true) -> "cuba"
             dbName.contains("ecommerce", ignoreCase = true) -> "ecommerce"
@@ -146,7 +161,7 @@ class DatabaseManager(private val context: Context) {
             dbName.contains("clinica", ignoreCase = true) || dbName.contains("clinic", ignoreCase = true) -> "clinic"
             dbName.startsWith("base_", ignoreCase = true) -> "empty"
             dbName.contains("mi_base_de_datos", ignoreCase = true) -> "sample"
-            else -> "facultad_ciencias"
+            else -> "otorgamiento_carreras"
         }
 
         if (file.exists()) {
@@ -154,6 +169,7 @@ class DatabaseManager(private val context: Context) {
         }
 
         when (template) {
+            "otorgamiento_carreras", "ingreso_superior" -> createSampleOtorgamientoCarreras(file)
             "facultad_ciencias", "centro_estudiantil" -> createSampleFacultadCiencias(file)
             "cuba" -> createSampleCuba(file)
             "ecommerce" -> createSampleEcommerce(file)
@@ -190,9 +206,9 @@ class DatabaseManager(private val context: Context) {
         if (remaining.isNotEmpty()) {
             switchDatabase(remaining.first())
         } else {
-            val defaultFile = File(dbDir, "facultad_ciencias.db")
-            createSampleFacultadCiencias(defaultFile)
-            switchDatabase("facultad_ciencias.db")
+            val defaultFile = File(dbDir, "otorgamiento_carreras.db")
+            createSampleOtorgamientoCarreras(defaultFile)
+            switchDatabase("otorgamiento_carreras.db")
         }
         return deleted
     }
@@ -1283,6 +1299,286 @@ class DatabaseManager(private val context: Context) {
             db.execSQL("INSERT OR IGNORE INTO medicos (nombre, especialidad, telefono) VALUES ('Dr. Roberto Blanco', 'Cardiología', '+34 600 123 456'), ('Dra. Laura Díaz', 'Pediatría', '+34 600 987 654');")
             db.execSQL("INSERT OR IGNORE INTO pacientes (nombre, edad, ciudad, grupo_sanguineo) VALUES ('Marta Silva', 34, 'Madrid', 'O+'), ('Pedro Morales', 62, 'Barcelona', 'A+'), ('Elena Rios', 19, 'Valencia', 'B-');")
             db.execSQL("INSERT OR IGNORE INTO citas (paciente_id, medico_id, fecha, motivo, costo) VALUES (1, 1, '2026-10-28', 'Chequeo preventivo', 75.0), (2, 1, 'Seguimiento presión arterial', 60.0), (3, 2, 'Consulta general', 50.0);")
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun createSampleOtorgamientoCarreras(file: File) {
+        val db = SQLiteDatabase.openOrCreateDatabase(file, null)
+        try {
+            db.execSQL("PRAGMA foreign_keys = ON;")
+
+            // 1. DDL
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS agrupaciones_carreras (
+                    id_agrupacion INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre_agrupacion TEXT NOT NULL
+                );
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS universidades (
+                    id_universidad INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nombre_universidad TEXT NOT NULL,
+                    siglas TEXT UNIQUE NOT NULL,
+                    provincia TEXT NOT NULL
+                );
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS carreras (
+                    id_carrera INTEGER PRIMARY KEY AUTOINCREMENT,
+                    codigo_carrera TEXT NOT NULL,
+                    nombre_carrera TEXT NOT NULL,
+                    id_universidad INTEGER NOT NULL,
+                    id_agrupacion INTEGER NOT NULL,
+                    via_ingreso TEXT NOT NULL DEFAULT 'Preuniversitario',
+                    FOREIGN KEY (id_universidad) REFERENCES universidades(id_universidad),
+                    FOREIGN KEY (id_agrupacion) REFERENCES agrupaciones_carreras(id_agrupacion)
+                );
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS estudiantes (
+                    id_estudiante INTEGER PRIMARY KEY AUTOINCREMENT,
+                    carnet_identidad TEXT UNIQUE NOT NULL,
+                    carnet_preuniversitario TEXT UNIQUE NOT NULL,
+                    nombre_completo TEXT NOT NULL,
+                    sexo TEXT CHECK (sexo IN ('M', 'F')),
+                    via_ingreso TEXT NOT NULL,
+                    indice_academico DECIMAL(5,2) NOT NULL CHECK (indice_academico BETWEEN 0 AND 100),
+                    provincia TEXT NOT NULL,
+                    municipio TEXT NOT NULL,
+                    centro_estudio TEXT NOT NULL
+                );
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS plazas_oferta (
+                    id_plaza INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id_carrera INTEGER NOT NULL,
+                    id_universidad INTEGER NOT NULL,
+                    provincia TEXT NOT NULL,
+                    municipio TEXT,
+                    cantidad_plazas INTEGER NOT NULL CHECK (cantidad_plazas > 0),
+                    ambito TEXT NOT NULL CHECK (ambito IN ('municipal', 'provincial', 'nacional')),
+                    FOREIGN KEY (id_carrera) REFERENCES carreras(id_carrera),
+                    FOREIGN KEY (id_universidad) REFERENCES universidades(id_universidad)
+                );
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS boletas_solicitud (
+                    id_boleta INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id_estudiante INTEGER NOT NULL,
+                    id_carrera INTEGER NOT NULL,
+                    orden_prioridad INTEGER NOT NULL CHECK (orden_prioridad BETWEEN 1 AND 10),
+                    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante),
+                    FOREIGN KEY (id_carrera) REFERENCES carreras(id_carrera)
+                );
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS examenes_ingreso (
+                    id_examen INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id_estudiante INTEGER NOT NULL UNIQUE,
+                    nota_matematica DECIMAL(5,2),
+                    nota_espanol DECIMAL(5,2),
+                    nota_historia DECIMAL(5,2),
+                    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante)
+                );
+            """.trimIndent())
+
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS otorgamientos (
+                    id_otorgamiento INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id_estudiante INTEGER NOT NULL UNIQUE,
+                    id_plaza INTEGER NOT NULL,
+                    prioridad_otorgada INTEGER NOT NULL,
+                    ces TEXT,
+                    sma TEXT,
+                    fase_otorgamiento INTEGER NOT NULL DEFAULT 1,
+                    estado TEXT DEFAULT 'Otorgado' CHECK (estado IN ('Otorgado', 'No otorgado')),
+                    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante),
+                    FOREIGN KEY (id_plaza) REFERENCES plazas_oferta(id_plaza)
+                );
+            """.trimIndent())
+
+            // 2. DML
+            // 2.1 Agrupaciones
+            db.execSQL("""
+                INSERT INTO agrupaciones_carreras (id_agrupacion, nombre_agrupacion) VALUES 
+                (1, 'Ciencias Médicas y Farmacéuticas'),
+                (2, 'Ciencias Técnicas y Exactas'),
+                (3, 'Ciencias Sociales y Humanísticas'),
+                (4, 'Ciencias Económicas y Empresariales'),
+                (5, 'Ciencias Pedagógicas'),
+                (6, 'Ciencias Agropecuarias y Cultura Física'),
+                (7, 'Técnico Superior');
+            """.trimIndent())
+
+            // 2.2 Universidades
+            db.execSQL("""
+                INSERT INTO universidades (id_universidad, nombre_universidad, siglas, provincia) VALUES 
+                (1, 'Instituto Superior Minero Metalúrgico de Moa', 'ISMM', 'Holguín'),
+                (2, 'Universidad de Holguín', 'UHo', 'Holguín'),
+                (3, 'Universidad de Oriente', 'UO', 'Santiago de Cuba'),
+                (4, 'Universidad de La Habana', 'UH', 'La Habana'),
+                (5, 'Universidad Tecnológica de La Habana', 'CUJAE', 'La Habana'),
+                (6, 'Universidad de Ciencias Informáticas', 'UCI', 'La Habana'),
+                (7, 'Universidad de Camagüey', 'UC', 'Camagüey'),
+                (8, 'Universidad de Granma', 'UG', 'Granma'),
+                (9, 'Universidad de Las Tunas', 'ULT', 'Las Tunas'),
+                (10, 'Escuela Nacional de Formación Aduanera', 'ENFA', 'La Habana'),
+                (11, 'Universidad de Ciencias Médicas de Holguín', 'UCMHo', 'Holguín');
+            """.trimIndent())
+
+            // 2.3 Carreras (Plan Oficial de Holguín: 85 carreras completas)
+            db.execSQL("INSERT INTO carreras (id_carrera, codigo_carrera, nombre_carrera, id_universidad, id_agrupacion, via_ingreso) VALUES (1, '102', 'Ingeniería Geología', 1, 2, 'Preuniversitario'), (2, '103', 'Ingeniería Minas', 1, 2, 'Preuniversitario'), (3, '104', 'Ingeniería Metalúrgica y Materiales', 1, 2, 'Preuniversitario'), (4, '110', 'Ingeniería Informática', 2, 2, 'Preuniversitario'), (5, '105', 'Ingeniería Eléctrica', 2, 2, 'Preuniversitario'), (6, '1051', 'Ingeniería Eléctrica', 1, 2, 'Preuniversitario'), (7, '106', 'Ingeniería Mecánica', 2, 2, 'Preuniversitario'), (8, '1061', 'Ingeniería Mecánica', 1, 2, 'Preuniversitario'), (9, '107', 'Ingeniería Química', 3, 2, 'Preuniversitario'), (10, '108', 'Ingeniería en Automática', 3, 2, 'Preuniversitario'), (11, '109', 'Ingeniería Telecomunicaciones y Electrónica', 3, 2, 'Preuniversitario'), (12, '111', 'Ingeniería Industrial', 2, 2, 'Preuniversitario'), (13, '112', 'Arquitectura', 7, 2, 'Preuniversitario'), (14, '113', 'Ingeniería Hidráulica', 2, 2, 'Preuniversitario'), (15, '114', 'Ingeniería Civil', 2, 2, 'Preuniversitario'), (16, '115', 'Licenciado Matemática', 2, 2, 'Preuniversitario'), (17, '116', 'Licenciado Ciencia de la Computación', 3, 2, 'Preuniversitario');");
+            db.execSQL("INSERT INTO carreras (id_carrera, codigo_carrera, nombre_carrera, id_universidad, id_agrupacion, via_ingreso) VALUES (18, '117', 'Licenciado Física', 3, 2, 'Preuniversitario'), (19, '118', 'Licenciado Química', 3, 2, 'Preuniversitario'), (20, '119', 'Licenciado Geografía', 4, 2, 'Preuniversitario'), (21, '120', 'Ingeniería Agrícola', 8, 6, 'Preuniversitario'), (22, '123', 'Ingeniería Biomédica', 3, 2, 'Preuniversitario'), (23, '125', 'Licenciado Física Nuclear', 4, 2, 'Preuniversitario'), (24, '126', 'Licenciado en Radioquímica', 4, 2, 'Preuniversitario'), (25, '127', 'Licenciado Meteorología', 4, 2, 'Preuniversitario'), (26, '128', 'Ingeniería Tecnologías Nucleares y Energéticas', 4, 2, 'Preuniversitario'), (27, '129', 'Ingeniería Geofísica', 5, 2, 'Preuniversitario'), (28, '131', 'Ingeniería en Ciencias Informáticas', 6, 2, 'Preuniversitario'), (29, '133', 'Ingeniería en Ciberseguridad', 6, 2, 'Preuniversitario'), (30, '201', 'Licenciado Bioquímica', 4, 2, 'Preuniversitario'), (31, '202', 'Licenciado Microbiología', 4, 2, 'Preuniversitario'), (32, '203', 'Licenciado Ciencias Alimentarias', 7, 2, 'Preuniversitario'), (33, '204', 'Licenciado Ciencias Farmacéuticas', 3, 1, 'Preuniversitario'), (34, '205', 'Licenciado Biología', 3, 2, 'Preuniversitario');");
+            db.execSQL("INSERT INTO carreras (id_carrera, codigo_carrera, nombre_carrera, id_universidad, id_agrupacion, via_ingreso) VALUES (35, '301', 'Licenciado Historia', 2, 3, 'Preuniversitario'), (36, '302', 'Licenciado Derecho', 2, 3, 'Preuniversitario'), (37, '303', 'Licenciado Historia del Arte', 3, 3, 'Preuniversitario'), (38, '305', 'Licenciado Ciencia de la Información', 2, 3, 'Preuniversitario'), (39, '306', 'Licenciado Psicología', 3, 3, 'Preuniversitario'), (40, '307', 'Licenciado Letras', 3, 3, 'Preuniversitario'), (41, '308', 'Licenciado Filosofía', 3, 3, 'Preuniversitario'), (42, '309', 'Licenciado Lengua Rusa', 4, 3, 'Preuniversitario'), (43, '310', 'Licenciado Lengua Inglesa', 2, 3, 'Preuniversitario'), (44, '311', 'Licenciado Lengua Alemana', 4, 3, 'Preuniversitario'), (45, '312', 'Licenciado Lengua Francesa', 4, 3, 'Preuniversitario'), (46, '313', 'Licenciado Sociología', 3, 3, 'Preuniversitario'), (47, '314', 'Lic. Gestión Sociocultural para el Desarrollo', 2, 3, 'Preuniversitario'), (48, '315', 'Licenciado Comunicación Social', 9, 3, 'Preuniversitario'), (49, '325', 'Diseño Industrial', 4, 3, 'Preuniversitario'), (50, '333', 'Diseño en Comunicación Visual', 4, 3, 'Preuniversitario'), (51, '501', 'Licenciado Cultura Física', 2, 6, 'Preuniversitario');");
+            db.execSQL("INSERT INTO carreras (id_carrera, codigo_carrera, nombre_carrera, id_universidad, id_agrupacion, via_ingreso) VALUES (52, '601', 'Ingeniería Agronomía', 2, 6, 'Preuniversitario'), (53, '602', 'Ingeniería Forestal', 8, 6, 'Preuniversitario'), (54, '603', 'Medicina Veterinaria y Zootecnia', 8, 6, 'Preuniversitario'), (55, '701', 'Licenciado Educación Matemática', 2, 5, 'Preuniversitario'), (56, '702', 'Licenciado Educación Español Literatura', 2, 5, 'Preuniversitario'), (57, '703', 'Licenciado Educación en Física', 2, 5, 'Preuniversitario'), (58, '704', 'Licenciado Educación Química', 2, 5, 'Preuniversitario'), (59, '705', 'Licenciado Educación Biología', 2, 5, 'Preuniversitario'), (60, '706', 'Licenciado Educación Geografía', 2, 5, 'Preuniversitario'), (61, '707', 'Licenciado Educación Laboral', 2, 5, 'Preuniversitario'), (62, '708', 'Licenciado Educación Informática', 2, 5, 'Preuniversitario'), (63, '711', 'Lic. Educ. Marxismo Leninismo e Historia', 2, 5, 'Preuniversitario'), (64, '713', 'Licenciado Educación Especial', 2, 5, 'Preuniversitario'), (65, '714', 'Licenciado Educación Primaria', 2, 5, 'Preuniversitario'), (66, '715', 'Licenciado Educación Preescolar', 2, 5, 'Preuniversitario'), (67, '720', 'Licenciado Educación Logopedia', 2, 5, 'Preuniversitario'), (68, '721', 'Licenciado Educación Pedagogía Agropecuaria', 2, 5, 'Preuniversitario');");
+            db.execSQL("INSERT INTO carreras (id_carrera, codigo_carrera, nombre_carrera, id_universidad, id_agrupacion, via_ingreso) VALUES (69, '724', 'Licenciado Educación Mecánica', 2, 5, 'Preuniversitario'), (70, '725', 'Licenciado Educación Construcción', 2, 5, 'Preuniversitario'), (71, '726', 'Licenciado Educación Eléctrica', 2, 5, 'Preuniversitario'), (72, '728', 'Licenciado Educación Economía', 2, 5, 'Preuniversitario'), (73, '731', 'Licenciado Educación Lenguas Extranjeras', 2, 5, 'Preuniversitario'), (74, '740', 'Licenciado Educación Artística', 2, 5, 'Preuniversitario'), (75, '801', 'Licenciado Economía', 2, 4, 'Preuniversitario'), (76, '802', 'Licenciado Contabilidad y Finanzas', 2, 4, 'Preuniversitario'), (77, '8021', 'Licenciado Contabilidad y Finanzas', 1, 4, 'Preuniversitario'), (78, '803', 'Licenciado Turismo', 2, 4, 'Preuniversitario'), (79, '921', 'TS en Aduana', 10, 7, 'Técnico Superior'), (80, '938', 'TS en Redes y Seguridad Informática', 6, 7, 'Técnico Superior'), (81, '949', 'TS en Asistencia turística', 2, 7, 'Técnico Superior'), (82, '950', 'TS en Servicios técnicos para el Turismo', 2, 7, 'Técnico Superior'), (83, '953', 'TS en Auditoría', 2, 7, 'Técnico Superior'), (84, '954', 'TS Interpretación de lengua de señas cubana', 2, 7, 'Técnico Superior'), (85, '1003', 'TS en Gestión de riesgo de impago en el sector turístico', 2, 7, 'Técnico Superior');");
+
+            // 2.4 Plazas Oferta Oficiales (983 vacantes en total)
+            db.execSQL("INSERT INTO plazas_oferta (id_plaza, id_carrera, id_universidad, provincia, municipio, cantidad_plazas, ambito) VALUES (1, 1, 1, 'Holguín', 'Moa', 11, 'municipal'), (2, 2, 1, 'Holguín', 'Moa', 8, 'municipal'), (3, 3, 1, 'Holguín', 'Moa', 6, 'municipal'), (4, 4, 2, 'Holguín', 'Holguín', 39, 'provincial'), (5, 5, 2, 'Holguín', 'Holguín', 10, 'provincial'), (6, 6, 1, 'Holguín', 'Moa', 18, 'municipal'), (7, 7, 2, 'Holguín', 'Holguín', 40, 'provincial'), (8, 8, 1, 'Holguín', 'Moa', 21, 'municipal'), (9, 9, 3, 'Santiago de Cuba', NULL, 5, 'nacional'), (10, 10, 3, 'Santiago de Cuba', NULL, 12, 'nacional'), (11, 11, 3, 'Santiago de Cuba', NULL, 2, 'nacional'), (12, 12, 2, 'Holguín', 'Holguín', 40, 'provincial'), (13, 13, 7, 'Camagüey', NULL, 10, 'nacional'), (14, 14, 2, 'Holguín', 'Holguín', 18, 'provincial'), (15, 15, 2, 'Holguín', 'Holguín', 54, 'provincial'), (16, 16, 2, 'Holguín', 'Holguín', 14, 'provincial'), (17, 17, 3, 'Santiago de Cuba', NULL, 9, 'nacional');");
+            db.execSQL("INSERT INTO plazas_oferta (id_plaza, id_carrera, id_universidad, provincia, municipio, cantidad_plazas, ambito) VALUES (18, 18, 3, 'Santiago de Cuba', NULL, 4, 'nacional'), (19, 19, 3, 'Santiago de Cuba', NULL, 8, 'nacional'), (20, 20, 4, 'La Habana', NULL, 3, 'nacional'), (21, 21, 8, 'Granma', NULL, 9, 'nacional'), (22, 22, 3, 'Santiago de Cuba', NULL, 4, 'nacional'), (23, 23, 4, 'La Habana', NULL, 2, 'nacional'), (24, 24, 4, 'La Habana', NULL, 1, 'nacional'), (25, 25, 4, 'La Habana', NULL, 1, 'nacional'), (26, 26, 4, 'La Habana', NULL, 1, 'nacional'), (27, 27, 5, 'La Habana', NULL, 4, 'nacional'), (28, 28, 6, 'La Habana', NULL, 44, 'nacional'), (29, 29, 6, 'La Habana', NULL, 4, 'nacional'), (30, 30, 4, 'La Habana', NULL, 4, 'nacional'), (31, 31, 4, 'La Habana', NULL, 2, 'nacional'), (32, 32, 7, 'Camagüey', NULL, 4, 'nacional'), (33, 33, 3, 'Santiago de Cuba', NULL, 4, 'nacional'), (34, 34, 3, 'Santiago de Cuba', NULL, 5, 'nacional');");
+            db.execSQL("INSERT INTO plazas_oferta (id_plaza, id_carrera, id_universidad, provincia, municipio, cantidad_plazas, ambito) VALUES (35, 35, 2, 'Holguín', 'Holguín', 9, 'provincial'), (36, 36, 2, 'Holguín', 'Holguín', 39, 'provincial'), (37, 37, 3, 'Santiago de Cuba', NULL, 2, 'nacional'), (38, 38, 2, 'Holguín', 'Holguín', 10, 'provincial'), (39, 39, 3, 'Santiago de Cuba', NULL, 1, 'nacional'), (40, 40, 3, 'Santiago de Cuba', NULL, 1, 'nacional'), (41, 41, 3, 'Santiago de Cuba', NULL, 1, 'nacional'), (42, 42, 4, 'La Habana', NULL, 1, 'nacional'), (43, 43, 2, 'Holguín', 'Holguín', 13, 'provincial'), (44, 44, 4, 'La Habana', NULL, 1, 'nacional'), (45, 45, 4, 'La Habana', NULL, 3, 'nacional'), (46, 46, 3, 'Santiago de Cuba', NULL, 8, 'nacional'), (47, 47, 2, 'Holguín', 'Holguín', 5, 'provincial'), (48, 48, 9, 'Las Tunas', NULL, 10, 'nacional'), (49, 49, 4, 'La Habana', NULL, 3, 'nacional'), (50, 50, 4, 'La Habana', NULL, 2, 'nacional'), (51, 51, 2, 'Holguín', 'Holguín', 17, 'provincial');");
+            db.execSQL("INSERT INTO plazas_oferta (id_plaza, id_carrera, id_universidad, provincia, municipio, cantidad_plazas, ambito) VALUES (52, 52, 2, 'Holguín', 'Holguín', 50, 'provincial'), (53, 53, 8, 'Granma', NULL, 4, 'nacional'), (54, 54, 8, 'Granma', NULL, 12, 'nacional'), (55, 55, 2, 'Holguín', 'Holguín', 3, 'provincial'), (56, 56, 2, 'Holguín', 'Holguín', 3, 'provincial'), (57, 57, 2, 'Holguín', 'Holguín', 3, 'provincial'), (58, 58, 2, 'Holguín', 'Holguín', 3, 'provincial'), (59, 59, 2, 'Holguín', 'Holguín', 3, 'provincial'), (60, 60, 2, 'Holguín', 'Holguín', 3, 'provincial'), (61, 61, 2, 'Holguín', 'Holguín', 3, 'provincial'), (62, 62, 2, 'Holguín', 'Holguín', 3, 'provincial'), (63, 63, 2, 'Holguín', 'Holguín', 3, 'provincial'), (64, 64, 2, 'Holguín', 'Holguín', 3, 'provincial'), (65, 65, 2, 'Holguín', 'Holguín', 3, 'provincial'), (66, 66, 2, 'Holguín', 'Holguín', 3, 'provincial'), (67, 67, 2, 'Holguín', 'Holguín', 3, 'provincial'), (68, 68, 2, 'Holguín', 'Holguín', 2, 'provincial');");
+            db.execSQL("INSERT INTO plazas_oferta (id_plaza, id_carrera, id_universidad, provincia, municipio, cantidad_plazas, ambito) VALUES (69, 69, 2, 'Holguín', 'Holguín', 2, 'provincial'), (70, 70, 2, 'Holguín', 'Holguín', 2, 'provincial'), (71, 71, 2, 'Holguín', 'Holguín', 2, 'provincial'), (72, 72, 2, 'Holguín', 'Holguín', 2, 'provincial'), (73, 73, 2, 'Holguín', 'Holguín', 5, 'provincial'), (74, 74, 2, 'Holguín', 'Holguín', 3, 'provincial'), (75, 75, 2, 'Holguín', 'Holguín', 50, 'provincial'), (76, 76, 2, 'Holguín', 'Holguín', 45, 'provincial'), (77, 77, 1, 'Holguín', 'Moa', 25, 'municipal'), (78, 78, 2, 'Holguín', 'Holguín', 15, 'provincial'), (79, 79, 10, 'La Habana', NULL, 40, 'nacional'), (80, 80, 6, 'La Habana', NULL, 33, 'nacional'), (81, 81, 2, 'Holguín', 'Holguín', 20, 'provincial'), (82, 82, 2, 'Holguín', 'Holguín', 15, 'provincial'), (83, 83, 2, 'Holguín', 'Holguín', 25, 'provincial'), (84, 84, 2, 'Holguín', 'Holguín', 15, 'provincial'), (85, 85, 2, 'Holguín', 'Holguín', 30, 'provincial');");
+
+            // 2.5 Estudiantes (30 de Moa + 5 adicionales realistas de Holguín/Moa)
+            db.execSQL("""
+                INSERT INTO estudiantes (carnet_identidad, carnet_preuniversitario, nombre_completo, sexo, via_ingreso, indice_academico, provincia, municipio, centro_estudio) VALUES
+                ('95010112345', '2026-001', 'Ana María López', 'F', 'Preuniversitario', 98.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95020223456', '2026-002', 'Carlos Manuel Pérez', 'M', 'Preuniversitario', 97.80, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95030334567', '2026-003', 'Laura Gómez', 'F', 'Preuniversitario', 97.20, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95040445678', '2026-004', 'Luis Fernández', 'M', 'Preuniversitario', 96.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95050556789', '2026-005', 'Elena Torres', 'F', 'Preuniversitario', 96.00, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95060667890', '2026-006', 'Javier Rodríguez', 'M', 'Preuniversitario', 95.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95070778901', '2026-007', 'Daniela Castro', 'F', 'Preuniversitario', 95.10, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95080889012', '2026-008', 'Pedro Sánchez', 'M', 'Preuniversitario', 94.80, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95090990123', '2026-009', 'María Rodríguez', 'F', 'Preuniversitario', 94.20, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95101001234', '2026-010', 'Alejandro Díaz', 'M', 'Preuniversitario', 93.90, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95111112345', '2026-011', 'Sofía Martínez', 'F', 'Preuniversitario', 93.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95121223456', '2026-012', 'Diego Ramos', 'M', 'Preuniversitario', 93.00, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95131334567', '2026-013', 'Valeria Ortiz', 'F', 'Preuniversitario', 92.60, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95141445678', '2026-014', 'Gabriel Núñez', 'M', 'Preuniversitario', 92.10, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95151556789', '2026-015', 'Camila Reyes', 'F', 'Preuniversitario', 91.80, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95161667890', '2026-016', 'Roberto Carlos Díaz', 'M', 'Preuniversitario', 91.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95171778901', '2026-017', 'Yamila Torres', 'F', 'Preuniversitario', 91.20, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95181889012', '2026-018', 'Ernesto Che Guevara', 'M', 'Preuniversitario', 90.80, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95191990123', '2026-019', 'Celia Sánchez', 'F', 'Preuniversitario', 90.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95202001234', '2026-020', 'Frank País', 'M', 'Preuniversitario', 90.10, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95212112345', '2026-021', 'Haydee Santamaría', 'F', 'Preuniversitario', 89.80, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95222223456', '2026-022', 'Camilo Cienfuegos', 'M', 'Preuniversitario', 89.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95232334567', '2026-023', 'Vilma Espín', 'F', 'Preuniversitario', 89.20, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95242445678', '2026-024', 'Abel Santamaría', 'M', 'Preuniversitario', 88.90, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95252556789', '2026-025', 'Tania la Guerrillera', 'F', 'Preuniversitario', 88.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95262667890', '2026-026', 'Julio Antonio Mella', 'M', 'Preuniversitario', 88.10, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95272778901', '2026-027', 'Mariana Grajales', 'F', 'Preuniversitario', 87.80, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95282889012', '2026-028', 'José Martí', 'M', 'Preuniversitario', 87.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95292990123', '2026-029', 'Antonio Maceo', 'M', 'Preuniversitario', 86.90, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95303001234', '2026-030', 'Máximo Gómez', 'M', 'Preuniversitario', 86.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95313112345', '2026-031', 'Gisela Leyva', 'F', 'Preuniversitario', 96.70, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95323223456', '2026-032', 'David Benítez', 'M', 'Preuniversitario', 95.80, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95333334567', '2026-033', 'Yailin Cruz', 'F', 'Preuniversitario', 94.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95343445678', '2026-034', 'Eduardo Enríquez', 'M', 'Preuniversitario', 97.40, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95353556789', '2026-035', 'Beatriz Montero', 'F', 'Preuniversitario', 92.80, 'Holguín', 'Moa', 'IPU Antonio López Fernández');
+            """.trimIndent())
+
+            // 2.6 Exámenes de Ingreso
+            db.execSQL("""
+                INSERT INTO examenes_ingreso (id_estudiante, nota_matematica, nota_espanol, nota_historia) VALUES
+                (1, 95, 92, 90), (2, 98, 95, 96), (3, 90, 88, 92), (4, 88, 90, 85), (5, 85, 88, 80),
+                (6, 92, 90, 88), (7, 85, 80, 82), (8, 75, 78, 80), (9, 80, 75, 78), (10, 70, 72, 75),
+                (11, 85, 82, 80), (12, 80, 85, 78), (13, 82, 80, 85), (14, 78, 80, 75), (15, 75, 78, 72),
+                (16, 88, 85, 82), (17, 82, 80, 78), (18, 90, 95, 92), (19, 75, 70, 72), (20, 80, 82, 80),
+                (21, 85, 88, 85), (22, 72, 75, 70), (23, 80, 78, 82), (24, 78, 75, 80), (25, 82, 85, 80),
+                (26, 70, 75, 72), (27, 85, 80, 78), (28, 80, 82, 85), (29, 75, 78, 75), (30, 72, 70, 75),
+                (31, 91, 89, 90), (32, 94, 88, 91), (33, 84, 82, 85), (34, 96, 94, 95), (35, 78, 80, 82);
+            """.trimIndent())
+
+            // 2.7 Boletas de Solicitud (Con hasta 10 opciones de prioridad)
+            db.execSQL("""
+                INSERT INTO boletas_solicitud (id_estudiante, id_carrera, orden_prioridad) VALUES
+                (1, 1, 1), (1, 4, 2), (1, 2, 3), (1, 5, 4), (1, 9, 5), (1, 11, 6), (1, 12, 7), (1, 6, 8), (1, 7, 9), (1, 8, 10),
+                (2, 4, 1), (2, 1, 2), (2, 5, 3), (2, 2, 4), (2, 12, 5), (2, 6, 6), (2, 7, 7), (2, 8, 8), (2, 9, 9), (2, 10, 10),
+                (3, 1, 1), (3, 3, 2), (3, 2, 3), (3, 9, 4), (3, 11, 5), (3, 4, 6), (3, 5, 7), (3, 10, 8), (3, 6, 9), (3, 7, 10),
+                (4, 9, 1), (4, 4, 2), (4, 1, 3), (4, 10, 4), (4, 11, 5), (4, 6, 6), (4, 7, 7), (4, 8, 8), (4, 2, 9), (4, 3, 10),
+                (5, 4, 1), (5, 6, 2), (5, 7, 3), (5, 8, 4), (5, 5, 5), (5, 12, 6), (5, 1, 7), (5, 2, 8), (5, 9, 9), (5, 10, 10),
+                (6, 6, 1), (6, 4, 2), (6, 7, 3), (6, 8, 4), (6, 12, 5), (6, 5, 6), (6, 1, 7), (6, 2, 8), (6, 9, 9), (6, 10, 10),
+                (7, 9, 1), (7, 1, 2), (7, 11, 3), (7, 10, 4), (7, 2, 5), (7, 3, 6), (7, 4, 7), (7, 5, 8), (7, 6, 9), (7, 7, 10),
+                (8, 6, 1), (8, 4, 2), (8, 7, 3), (8, 8, 4), (8, 12, 5), (8, 5, 6), (8, 9, 7), (8, 10, 8), (8, 1, 9), (8, 2, 10),
+                (9, 2, 1), (9, 3, 2), (9, 1, 3), (9, 4, 4), (9, 5, 5), (9, 9, 6), (9, 11, 7), (9, 6, 8), (9, 7, 9), (9, 8, 10),
+                (10, 4, 1), (10, 5, 2), (10, 6, 3), (10, 7, 4), (10, 8, 5), (10, 12, 6), (10, 1, 7), (10, 2, 8), (10, 9, 9), (10, 10, 10),
+                (11, 6, 1), (11, 8, 2), (11, 7, 3), (11, 12, 4), (11, 4, 5), (11, 5, 6), (11, 1, 7), (11, 2, 8), (11, 9, 9), (11, 10, 10),
+                (12, 1, 1), (12, 9, 2), (12, 11, 3), (12, 10, 4), (12, 4, 5), (12, 2, 6), (12, 5, 7), (12, 6, 8), (12, 7, 9), (12, 8, 10),
+                (13, 7, 1), (13, 6, 2), (13, 8, 3), (13, 12, 4), (13, 4, 5), (13, 5, 6), (13, 9, 7), (13, 10, 8), (13, 1, 9), (13, 2, 10),
+                (14, 8, 1), (14, 7, 2), (14, 6, 3), (14, 12, 4), (14, 4, 5), (14, 5, 6), (14, 1, 7), (14, 2, 8), (14, 9, 9), (14, 10, 10),
+                (15, 9, 1), (15, 10, 2), (15, 1, 3), (15, 11, 4), (15, 2, 5), (15, 3, 6), (15, 4, 7), (15, 5, 8), (15, 6, 9), (15, 7, 10),
+                (16, 1, 1), (16, 4, 2), (16, 9, 3), (16, 11, 4), (16, 2, 5), (16, 5, 6), (16, 12, 7), (16, 6, 8), (16, 7, 9), (16, 8, 10),
+                (17, 9, 1), (17, 2, 2), (17, 10, 3), (17, 1, 4), (17, 11, 5), (17, 3, 6), (17, 4, 7), (17, 5, 8), (17, 6, 9), (17, 7, 10),
+                (18, 4, 1), (18, 6, 2), (18, 5, 3), (18, 7, 4), (18, 8, 5), (18, 12, 6), (18, 1, 7), (18, 2, 8), (18, 9, 9), (18, 10, 10),
+                (19, 11, 1), (19, 9, 2), (19, 1, 3), (19, 10, 4), (19, 2, 5), (19, 3, 6), (19, 4, 7), (19, 5, 8), (19, 6, 9), (19, 7, 10),
+                (20, 6, 1), (20, 8, 2), (20, 7, 3), (20, 12, 4), (20, 4, 5), (20, 5, 6), (20, 1, 7), (20, 2, 8), (20, 9, 9), (20, 10, 10),
+                (21, 12, 1), (21, 10, 2), (21, 4, 3), (21, 6, 4), (21, 7, 5), (21, 8, 6), (21, 1, 7), (21, 2, 8), (21, 9, 9), (21, 5, 10),
+                (22, 2, 1), (22, 3, 2), (22, 1, 3), (22, 4, 4), (22, 9, 5), (22, 11, 6), (22, 5, 7), (22, 6, 8), (22, 7, 9), (22, 8, 10),
+                (23, 9, 1), (23, 1, 2), (23, 11, 3), (23, 10, 4), (23, 2, 5), (23, 3, 6), (23, 4, 7), (23, 5, 8), (23, 6, 9), (23, 7, 10),
+                (24, 5, 1), (24, 4, 2), (24, 6, 3), (24, 7, 4), (24, 8, 5), (24, 12, 6), (24, 1, 7), (24, 2, 8), (24, 9, 9), (24, 10, 10),
+                (25, 10, 1), (25, 9, 2), (25, 1, 3), (25, 11, 4), (25, 2, 5), (25, 3, 6), (25, 4, 7), (25, 5, 8), (25, 6, 9), (25, 7, 10),
+                (26, 6, 1), (26, 8, 2), (26, 7, 3), (26, 12, 4), (26, 4, 5), (26, 5, 6), (26, 1, 7), (26, 2, 8), (26, 9, 9), (26, 10, 10),
+                (27, 1, 1), (27, 11, 2), (27, 9, 3), (27, 10, 4), (27, 2, 5), (27, 3, 6), (27, 4, 7), (27, 5, 8), (27, 6, 9), (27, 7, 10),
+                (28, 9, 1), (28, 10, 2), (28, 1, 3), (28, 11, 4), (28, 2, 5), (28, 3, 6), (28, 4, 7), (28, 5, 8), (28, 6, 9), (28, 7, 10),
+                (29, 4, 1), (29, 5, 2), (29, 6, 3), (29, 7, 4), (29, 8, 5), (29, 12, 6), (29, 1, 7), (29, 2, 8), (29, 9, 9), (29, 10, 10),
+                (30, 6, 1), (30, 7, 2), (30, 8, 3), (30, 12, 4), (30, 4, 5), (30, 5, 6), (30, 1, 7), (30, 2, 8), (30, 9, 9), (30, 10, 10),
+                (31, 4, 1), (31, 2, 2), (31, 5, 3), (31, 1, 4), (31, 9, 5), (31, 11, 6), (31, 6, 7), (31, 7, 8), (31, 8, 9), (31, 12, 10),
+                (32, 6, 1), (32, 4, 2), (32, 7, 3), (32, 8, 4), (32, 5, 5), (32, 12, 6), (32, 1, 7), (32, 2, 8), (32, 9, 9), (32, 10, 10),
+                (33, 9, 1), (33, 10, 2), (33, 1, 3), (33, 11, 4), (33, 4, 5), (33, 2, 6), (33, 3, 7), (33, 5, 8), (33, 6, 9), (33, 7, 10),
+                (34, 4, 1), (34, 1, 2), (34, 5, 3), (34, 2, 4), (34, 9, 5), (34, 11, 6), (34, 6, 7), (34, 7, 8), (34, 8, 9), (34, 12, 10),
+                (35, 7, 1), (35, 6, 2), (35, 8, 3), (35, 12, 4), (35, 4, 5), (35, 5, 6), (35, 9, 7), (35, 10, 8), (35, 1, 9), (35, 2, 10);
+            """.trimIndent())
+
+            // 2.8 Otorgamientos (Simulación oficial según Escalafón vs. Plazas ofertadas)
+            db.execSQL("""
+                INSERT INTO otorgamientos (id_estudiante, id_plaza, prioridad_otorgada, ces, sma, fase_otorgamiento, estado) VALUES
+                (1, 4, 2, 'UHo', 'Apto FAR', 1, 'Otorgado'),
+                (2, 4, 1, 'UHo', 'Apto FAR', 1, 'Otorgado'),
+                (3, 1, 1, 'ISMM', 'Diferido', 1, 'Otorgado'),
+                (4, 9, 1, 'UO', 'Apto FAR', 1, 'Otorgado'),
+                (5, 4, 1, 'UHo', 'Apto FAR', 1, 'Otorgado'),
+                (6, 6, 1, 'ISMM', 'Apto FAR', 1, 'Otorgado'),
+                (7, 9, 1, 'UO', 'Diferida', 1, 'Otorgado'),
+                (8, 6, 1, 'ISMM', 'Apto FAR', 1, 'Otorgado'),
+                (9, 2, 1, 'ISMM', 'Diferido', 1, 'Otorgado'),
+                (10, 4, 1, 'UHo', 'Apto FAR', 1, 'Otorgado'),
+                (11, 6, 1, 'ISMM', 'Apto FAR', 1, 'Otorgado'),
+                (12, 1, 1, 'ISMM', 'Apto FAR', 1, 'Otorgado'),
+                (13, 7, 1, 'UHo', 'Diferida', 1, 'Otorgado'),
+                (14, 8, 1, 'ISMM', 'Apto FAR', 1, 'Otorgado'),
+                (15, 9, 1, 'UO', 'Diferida', 1, 'Otorgado'),
+                (16, 1, 1, 'ISMM', 'Apto FAR', 1, 'Otorgado'),
+                (17, 9, 1, 'UO', 'Diferido', 1, 'Otorgado'),
+                (18, 4, 1, 'UHo', 'Diferida', 1, 'Otorgado'),
+                (19, 11, 1, 'UO', 'Apto FAR', 1, 'Otorgado'),
+                (20, 6, 1, 'ISMM', 'Apto FAR', 1, 'Otorgado'),
+                (21, 12, 1, 'UHo', 'Apto FAR', 1, 'Otorgado'),
+                (22, 2, 1, 'ISMM', 'Diferido', 1, 'Otorgado'),
+                (23, 9, 1, 'UO', 'Diferida', 1, 'Otorgado'),
+                (24, 5, 1, 'UHo', 'Apto FAR', 1, 'Otorgado'),
+                (25, 10, 1, 'UO', 'Diferida', 1, 'Otorgado'),
+                (26, 6, 1, 'ISMM', 'Apto FAR', 1, 'Otorgado'),
+                (27, 1, 1, 'ISMM', 'Apto FAR', 1, 'Otorgado'),
+                (28, 9, 1, 'UO', 'Diferida', 1, 'Otorgado'),
+                (29, 4, 1, 'UHo', 'Apto FAR', 1, 'Otorgado'),
+                (30, 6, 1, 'ISMM', 'Apto FAR', 1, 'Otorgado'),
+                (31, 4, 1, 'UHo', 'Apto FAR', 1, 'Otorgado'),
+                (32, 6, 1, 'ISMM', 'Apto FAR', 1, 'Otorgado'),
+                (33, 9, 1, 'UO', 'Diferida', 1, 'Otorgado'),
+                (34, 4, 1, 'UHo', 'Diferida', 1, 'Otorgado'),
+                (35, 7, 1, 'UHo', 'Apto FAR', 1, 'Otorgado');
+            """.trimIndent())
         } finally {
             db.close()
         }

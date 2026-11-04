@@ -248,104 +248,33 @@ fun SqlEditor(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                // Pinned Left Group: Language label + Live Validation Badge (Always fully visible, never clipped)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         text = "SQL",
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(end = 4.dp)
+                        color = MaterialTheme.colorScheme.primary
                     )
 
-                    IconButton(
-                        onClick = { undo() },
-                        enabled = undoStack.isNotEmpty(),
-                        modifier = Modifier
-                            .size(32.dp)
-                            .testTag("undo_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Undo,
-                            contentDescription = "Deshacer",
-                            tint = if (undoStack.isNotEmpty()) textPrimary else textMuted,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { redo() },
-                        enabled = redoStack.isNotEmpty(),
-                        modifier = Modifier
-                            .size(32.dp)
-                            .testTag("redo_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Redo,
-                            contentDescription = "Rehacer",
-                            tint = if (redoStack.isNotEmpty()) textPrimary else textMuted,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { formatSql() },
-                        modifier = Modifier
-                            .size(32.dp)
-                            .testTag("format_sql_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.AutoAwesome,
-                            contentDescription = "Dar formato SQL",
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { showSyntaxLegendDialog = true },
-                        modifier = Modifier
-                            .size(32.dp)
-                            .testTag("syntax_palette_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Palette,
-                            contentDescription = "Paleta de resaltado de sintaxis",
-                            tint = Color(0xFF818CF8),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { showQuickKeywordsBar = !showQuickKeywordsBar },
-                        modifier = Modifier
-                            .size(32.dp)
-                            .testTag("toggle_quick_keywords_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Bolt,
-                            contentDescription = "Barra de palabras clave",
-                            tint = if (showQuickKeywordsBar) MaterialTheme.colorScheme.primary else textMuted,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    // Live Syntax Validation Badge
+                    // Live Syntax Validation Badge pinned directly next to SQL
                     if (value.text.isNotBlank()) {
                         if (syntaxIssues.isEmpty()) {
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = SqlSuccess.copy(alpha = 0.15f),
-                                modifier = Modifier.padding(start = 4.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                color = SqlSuccess.copy(alpha = 0.16f),
+                                border = BorderStroke(1.dp, SqlSuccess.copy(alpha = 0.4f)),
+                                modifier = Modifier.testTag("syntax_valid_badge")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -357,7 +286,7 @@ fun SqlEditor(
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
                                         text = "Válido",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                         color = SqlSuccess,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -366,15 +295,16 @@ fun SqlEditor(
                         } else {
                             val badgeColor = if (errorCount > 0) SqlError else SqlWarning
                             Surface(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = badgeColor.copy(alpha = 0.18f),
+                                border = BorderStroke(1.dp, badgeColor.copy(alpha = 0.4f)),
                                 modifier = Modifier
-                                    .padding(start = 4.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .clickable { showDiagnosticsDetails = !showDiagnosticsDetails }
                                     .testTag("syntax_issues_badge")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.5.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -385,8 +315,8 @@ fun SqlEditor(
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
-                                        text = if (errorCount > 0) "$errorCount error(es)" else "$warningCount aviso(s)",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                        text = if (errorCount > 0) "$errorCount err" else "$warningCount aviso",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
                                         color = badgeColor,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -402,31 +332,116 @@ fun SqlEditor(
                     }
                 }
 
+                // Middle Action Buttons with adjusted compact spacing & sizing
                 Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 4.dp)
+                        .horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterHorizontally)
+                ) {
+                    IconButton(
+                        onClick = { undo() },
+                        enabled = undoStack.isNotEmpty(),
+                        modifier = Modifier
+                            .size(28.dp)
+                            .testTag("undo_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Undo,
+                            contentDescription = "Deshacer",
+                            tint = if (undoStack.isNotEmpty()) textPrimary else textMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { redo() },
+                        enabled = redoStack.isNotEmpty(),
+                        modifier = Modifier
+                            .size(28.dp)
+                            .testTag("redo_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Redo,
+                            contentDescription = "Rehacer",
+                            tint = if (redoStack.isNotEmpty()) textPrimary else textMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { formatSql() },
+                        modifier = Modifier
+                            .size(28.dp)
+                            .testTag("format_sql_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.AutoAwesome,
+                            contentDescription = "Dar formato SQL",
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { showSyntaxLegendDialog = true },
+                        modifier = Modifier
+                            .size(28.dp)
+                            .testTag("syntax_palette_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Palette,
+                            contentDescription = "Paleta de resaltado de sintaxis",
+                            tint = Color(0xFF818CF8),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { showQuickKeywordsBar = !showQuickKeywordsBar },
+                        modifier = Modifier
+                            .size(28.dp)
+                            .testTag("toggle_quick_keywords_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Bolt,
+                            contentDescription = "Barra de palabras clave",
+                            tint = if (showQuickKeywordsBar) MaterialTheme.colorScheme.primary else textMuted,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                // Pinned Right Group: Compact Line Counter + Font Sizers
+                Row(
+                    modifier = Modifier.padding(start = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Text(
-                        text = "$linesCount ${if (linesCount == 1) "línea" else "líneas"}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = textMuted
+                        text = "${linesCount}L",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Medium),
+                        color = textMuted,
+                        maxLines = 1
                     )
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(
                             onClick = { if (fontSizeSp > 11f) fontSizeSp -= 1f },
-                            modifier = Modifier.size(32.dp),
+                            modifier = Modifier.size(26.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
                         ) {
-                            Text("A-", style = MaterialTheme.typography.labelMedium, color = textPrimary)
+                            Text("A-", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = textPrimary)
                         }
 
                         TextButton(
                             onClick = { if (fontSizeSp < 22f) fontSizeSp += 1f },
-                            modifier = Modifier.size(32.dp),
+                            modifier = Modifier.size(26.dp),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
                         ) {
-                            Text("A+", style = MaterialTheme.typography.labelMedium, color = textPrimary)
+                            Text("A+", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = textPrimary)
                         }
                     }
                 }

@@ -93,9 +93,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -140,6 +144,7 @@ fun DesignerScreen(
     dbManager: DatabaseManager,
     onRefreshTables: () -> Unit,
     onResetCurrentDb: (() -> Unit)? = null,
+    onSelectTable: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -289,7 +294,7 @@ fun DesignerScreen(
                             }
                         }
                 ) {
-                    TableEntityCard(schema = schema)
+                    TableEntityCard(schema = schema, onSelectTable = onSelectTable)
                 }
             }
 
@@ -494,11 +499,17 @@ fun DesignerScreen(
 }
 
 @Composable
-fun TableEntityCard(schema: TableSchemaDetail) {
+fun TableEntityCard(
+    schema: TableSchemaDetail,
+    onSelectTable: ((String) -> Unit)? = null
+) {
     Card(
         modifier = Modifier
             .width(260.dp)
-            .shadow(6.dp, RoundedCornerShape(12.dp)),
+            .shadow(6.dp, RoundedCornerShape(12.dp))
+            .clickable(enabled = onSelectTable != null) {
+                onSelectTable?.invoke(schema.tableName)
+            },
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -535,8 +546,8 @@ fun TableEntityCard(schema: TableSchemaDetail) {
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                 ) {
                     Text(
-                        text = "${schema.columns.size} cols",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        text = if (onSelectTable != null) "Datos ➔" else "${schema.columns.size} cols",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
@@ -687,23 +698,38 @@ fun NewTableDesignerDialog(
                 "\n);"
     }
 
+    val canSave = tableName.isNotBlank() && columns.any { it.name.isNotBlank() }
+    val handleSaveAndAddAnother = {
+        if (canSave) {
+            val sql = generateSql()
+            onCreateTableAndContinue?.invoke(sql)
+            resetForm()
+        }
+    }
+    val handleSaveAndClose = {
+        if (canSave) {
+            onCreateTable(generateSql())
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.65f))
-                .safeDrawingPadding()
-                .imePadding()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .windowInsetsPadding(WindowInsets.ime)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
             contentAlignment = Alignment.Center
         ) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.95f),
+                    .fillMaxHeight(0.92f),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
@@ -755,6 +781,48 @@ fun NewTableDesignerDialog(
                                 contentDescription = "Cerrar",
                                 tint = MaterialTheme.colorScheme.onPrimaryContainer
                             )
+                        }
+                    }
+
+                    // Cabecera Superior con Botones Fijos de Acción Inmediata (a prueba de teclados y barras de sistema)
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(40.dp)
+                                    .testTag("top_designer_cancel_table_btn"),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Outlined.Close, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Cancelar", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            }
+
+                            Button(
+                                onClick = handleSaveAndClose,
+                                enabled = canSave,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(40.dp)
+                                    .testTag("top_designer_save_table_btn"),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Guardar", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, maxLines = 1)
+                            }
                         }
                     }
 
@@ -1194,64 +1262,6 @@ fun NewTableDesignerDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(10.dp)
                             )
-                        }
-                    }
-
-                    // Permanently Anchored Bottom Action Bar: Always Elevated, Solid, and Visible Above Keyboard
-                    Surface(
-                        tonalElevation = 8.dp,
-                        shadowElevation = 8.dp,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    if (tableName.isNotBlank()) {
-                                        val sql = generateSql()
-                                        onCreateTableAndContinue?.invoke(sql)
-                                        resetForm()
-                                    }
-                                },
-                                enabled = tableName.isNotBlank() && columns.any { it.name.isNotBlank() },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 48.dp)
-                                    .testTag("designer_save_and_add_another_btn"),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Outlined.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Guardar ++", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                            }
-
-                            Button(
-                                onClick = {
-                                    if (tableName.isNotBlank()) {
-                                        onCreateTable(generateSql())
-                                    }
-                                },
-                                enabled = tableName.isNotBlank() && columns.any { it.name.isNotBlank() },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 48.dp)
-                                    .testTag("designer_save_table_btn"),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Icon(Icons.Outlined.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Guardar", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1)
-                            }
                         }
                     }
                 }

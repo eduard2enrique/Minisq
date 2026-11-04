@@ -138,24 +138,54 @@ class QueryRepository(context: Context) {
             savedList.addAll(
                 listOf(
                     SavedQueryItem(
-                        title = "Estudiantes, Materias y Profesores (JOIN Triple)",
-                        description = "Relaciona cada estudiante con su materia y profesor titular",
-                        sql = "SELECT e.matricula, e.nombre AS estudiante, m.nombre AS materia, p.nombre AS profesor, e.promedio\nFROM estudiantes e\nINNER JOIN materias m ON e.materia_id = m.id\nINNER JOIN profesores p ON m.profesor_id = p.id\nORDER BY e.promedio DESC;"
+                        title = "Nivel 1: Top 5 de Estudiantes (Mejor Índice)",
+                        description = "Alumnos de máximo rendimiento antes de los exámenes de ingreso",
+                        sql = "SELECT nombre_completo, sexo, indice_academico, centro_estudio\nFROM estudiantes\nORDER BY indice_academico DESC\nLIMIT 5;"
                     ),
                     SavedQueryItem(
-                        title = "Cátedras de Ciencias de Datos & IA (Prof. Eduardo Sanamé)",
-                        description = "Materias a cargo del titular Prof. Eduardo Sanamé Durán",
-                        sql = "SELECT m.codigo, m.nombre AS materia, m.creditos, m.semestre, p.nombre AS profesor, p.especialidad\nFROM materias m\nINNER JOIN profesores p ON m.profesor_id = p.id\nWHERE p.nombre LIKE '%Sanamé%'\nORDER BY m.semestre ASC;"
+                        title = "Nivel 1: Carreras Técnicas en La Habana",
+                        description = "Aspirantes a carreras técnicas de la capital (JOIN triple con filtro)",
+                        sql = "SELECT e.nombre_completo, c.nombre_carrera, u.siglas, u.provincia\nFROM estudiantes e\nJOIN boletas_solicitud b ON e.id_estudiante = b.id_estudiante\nJOIN carreras c ON b.id_carrera = c.id_carrera\nJOIN universidades u ON c.id_universidad = u.id_universidad\nWHERE u.provincia = 'La Habana' AND c.id_agrupacion = 2;"
                     ),
                     SavedQueryItem(
-                        title = "Cuadro de Honor (Promedio >= 95.0)",
-                        description = "Alumnos de máximo rendimiento académico en la Facultad",
-                        sql = "SELECT e.nombre, e.matricula, m.nombre AS materia, e.promedio, e.ano_carrera\nFROM estudiantes e\nJOIN materias m ON e.materia_id = m.id\nWHERE e.promedio >= 95.0\nORDER BY e.promedio DESC;"
+                        title = "Nivel 2: Promedios en Exámenes de Ingreso",
+                        description = "Promedio de notas en Matemática, Español e Historia",
+                        sql = "SELECT \n    ROUND(AVG(nota_matematica), 2) AS Promedio_Mate,\n    ROUND(AVG(nota_espanol), 2) AS Promedio_Espanol,\n    ROUND(AVG(nota_historia), 2) AS Promedio_Historia\nFROM examenes_ingreso;"
                     ),
                     SavedQueryItem(
-                        title = "Promedio General por Disciplina Académica",
-                        description = "Agrupación de rendimiento medio y total de inscritos por materia",
-                        sql = "SELECT m.nombre AS materia, COUNT(e.id) AS total_estudiantes, ROUND(AVG(e.promedio), 2) AS promedio_materia\nFROM materias m\nLEFT JOIN estudiantes e ON m.id = e.materia_id\nGROUP BY m.id, m.nombre\nORDER BY promedio_materia DESC;"
+                        title = "Nivel 2: Carrera Más Popular (Demanda 1ra Opción)",
+                        description = "Total de estudiantes que la solicitaron como prioridad 1",
+                        sql = "SELECT c.nombre_carrera, u.siglas, COUNT(b.id_estudiante) AS Cantidad_Estudiantes\nFROM boletas_solicitud b\nJOIN carreras c ON b.id_carrera = c.id_carrera\nJOIN universidades u ON c.id_universidad = u.id_universidad\nWHERE b.orden_prioridad = 1\nGROUP BY c.nombre_carrera, u.siglas\nORDER BY Cantidad_Estudiantes DESC;"
+                    ),
+                    SavedQueryItem(
+                        title = "Nivel 2: Género en Ingeniería Informática",
+                        description = "Distribución de mujeres y hombres que piden Informática (CUJAE)",
+                        sql = "SELECT e.sexo, COUNT(*) AS Cantidad\nFROM estudiantes e\nJOIN boletas_solicitud b ON e.id_estudiante = b.id_estudiante\nWHERE b.id_carrera = 4\nGROUP BY e.sexo;"
+                    ),
+                    SavedQueryItem(
+                        title = "Nivel 3: Índice de Corte (Informática)",
+                        description = "Nota del último estudiante que alcanza una de las 4 plazas (LIMIT 1 OFFSET 3)",
+                        sql = "SELECT e.nombre_completo, \n       ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS Indice_Final\nFROM estudiantes e\nJOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante\nJOIN boletas_solicitud b ON e.id_estudiante = b.id_estudiante\nWHERE b.id_carrera = 4\nORDER BY Indice_Final DESC\nLIMIT 1 OFFSET 3;"
+                    ),
+                    SavedQueryItem(
+                        title = "Nivel 3: El 'Efecto Dominó' (Plan B)",
+                        description = "Aspirantes fuera del Top 4 de Informática y cuál es su 2da opción",
+                        sql = "SELECT \n    e.nombre_completo AS Estudiante,\n    ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS Indice_Final,\n    c2.nombre_carrera AS Segunda_Opcion,\n    u2.siglas AS Universidad_Plan_B\nFROM estudiantes e\nJOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante\nJOIN boletas_solicitud b1 ON e.id_estudiante = b1.id_estudiante AND b1.id_carrera = 4\nJOIN boletas_solicitud b2 ON e.id_estudiante = b2.id_estudiante AND b2.orden_prioridad = 2\nJOIN carreras c2 ON b2.id_carrera = c2.id_carrera\nJOIN universidades u2 ON c2.id_universidad = u2.id_universidad\nWHERE e.id_estudiante NOT IN (\n    SELECT e2.id_estudiante\n    FROM estudiantes e2\n    JOIN examenes_ingreso ex2 ON e2.id_estudiante = ex2.id_estudiante\n    JOIN boletas_solicitud b3 ON e2.id_estudiante = b3.id_estudiante\n    WHERE b3.id_carrera = 4\n    ORDER BY (e2.indice_academico * 0.5) + (((ex2.nota_matematica + ex2.nota_espanol + ex2.nota_historia) / 3.0) * 0.5) DESC\n    LIMIT 4\n)\nORDER BY Indice_Final DESC;"
+                    ),
+                    SavedQueryItem(
+                        title = "Nivel 4: Escalafón por Carrera (ROW_NUMBER)",
+                        description = "Numera el puesto exacto de cada estudiante por carrera según su nota final",
+                        sql = "WITH NotasFinales AS (\n    SELECT \n        e.nombre_completo,\n        b.id_carrera,\n        ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS indice_final\n    FROM estudiantes e\n    JOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante\n    JOIN boletas_solicitud b ON e.id_estudiante = b.id_estudiante\n)\nSELECT \n    c.nombre_carrera,\n    nf.nombre_completo,\n    nf.indice_final,\n    ROW_NUMBER() OVER (PARTITION BY nf.id_carrera ORDER BY nf.indice_final DESC) AS Puesto_En_Carrera\nFROM NotasFinales nf\nJOIN carreras c ON nf.id_carrera = c.id_carrera\nORDER BY c.nombre_carrera, Puesto_En_Carrera;"
+                    ),
+                    SavedQueryItem(
+                        title = "Nivel 4: Simulador de Primer Otorgamiento",
+                        description = "Cruza el puesto con la tabla plazas_oferta para saber si entra o va a espera",
+                        sql = "WITH Escalafon AS (\n    SELECT \n        b.id_estudiante,\n        b.id_carrera,\n        ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS indice_final,\n        ROW_NUMBER() OVER (PARTITION BY b.id_carrera ORDER BY ((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5)) DESC) AS puesto\n    FROM boletas_solicitud b\n    JOIN estudiantes e ON b.id_estudiante = e.id_estudiante\n    JOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante\n    WHERE b.orden_prioridad = 1\n)\nSELECT \n    e.nombre_completo,\n    c.nombre_carrera,\n    esc.indice_final,\n    po.cantidad_plazas,\n    CASE \n        WHEN esc.puesto <= po.cantidad_plazas THEN '¡ADENTRO!'\n        ELSE 'Lista de espera'\n    END AS Resultado_Otorgamiento\nFROM Escalafon esc\nJOIN estudiantes e ON esc.id_estudiante = e.id_estudiante\nJOIN carreras c ON esc.id_carrera = c.id_carrera\nJOIN plazas_oferta po ON c.id_carrera = po.id_carrera\nORDER BY c.nombre_carrera, esc.puesto;"
+                    ),
+                    SavedQueryItem(
+                        title = "Nivel 5: Escalafón Integral con Desempate",
+                        description = "Escalafón general oficial ponderado con desempate por nota de Matemática",
+                        sql = "SELECT \n    ROW_NUMBER() OVER (\n        ORDER BY \n            ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) DESC,\n            ex.nota_matematica DESC,\n            e.indice_academico DESC\n    ) AS Puesto_General,\n    e.nombre_completo,\n    e.sexo,\n    e.indice_academico,\n    ex.nota_matematica AS Mate,\n    ex.nota_espanol AS Esp,\n    ex.nota_historia AS Hist,\n    ROUND((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0, 2) AS Prom_Examenes,\n    ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS Indice_Final\nFROM estudiantes e\nJOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante\nORDER BY Puesto_General ASC;"
                     )
                 )
             )
@@ -179,175 +209,132 @@ class QueryRepository(context: Context) {
 
     fun getEducationalExamples(): List<SqlExample> {
         return listOf(
+            // Nivel 1: Básico (Filtros y Ordenamiento)
             SqlExample(
-                title = "Consulta General de Alumnos (SELECT)",
-                category = "Básicas",
-                description = "Lista todos los estudiantes ordenados por promedio académico de mayor a menor.",
-                sql = "SELECT matricula, nombre, promedio, ano_carrera\nFROM estudiantes\nORDER BY promedio DESC;"
+                title = "1. Top 5 de Alumnos por Índice Académico",
+                category = "Nivel 1: Básico (Filtros y Ordenamiento)",
+                description = "El Top 5 de los estudiantes con mejor índice académico antes de los exámenes.",
+                sql = "SELECT nombre_completo, sexo, indice_academico, centro_estudio\nFROM estudiantes\nORDER BY indice_academico DESC\nLIMIT 5;"
             ),
             SqlExample(
-                title = "Filtro de Profesores por Departamento",
-                category = "Básicas",
-                description = "Filtra profesores del área de Informática y Computación ordenados alfabéticamente.",
-                sql = "SELECT nombre, especialidad, email\nFROM profesores\nWHERE departamento = 'Informática y Computación'\nORDER BY nombre ASC;"
+                title = "2. Carreras Técnicas en La Habana (JOIN)",
+                category = "Nivel 1: Básico (Filtros y Ordenamiento)",
+                description = "Aspirantes a carreras técnicas en la capital combinando boletas, carreras y universidades.",
+                sql = "SELECT e.nombre_completo, c.nombre_carrera, u.siglas, u.provincia\nFROM estudiantes e\nJOIN boletas_solicitud b ON e.id_estudiante = b.id_estudiante\nJOIN carreras c ON b.id_carrera = c.id_carrera\nJOIN universidades u ON c.id_universidad = u.id_universidad\nWHERE u.provincia = 'La Habana' AND c.id_agrupacion = 2; -- 2 = Ciencias Técnicas"
             ),
-            SqlExample(
-                title = "Inserción con Clave Auto-Incremental (INSERT OR IGNORE)",
-                category = "Manipulación (DML)",
-                description = "Inserta un nuevo estudiante. Con 'OR IGNORE' no falla si la matrícula o ID ya existen.",
-                sql = "-- 'INSERT OR IGNORE' garantiza re-ejecución segura sin fallos por clave duplicada:\n" +
-                      "INSERT OR IGNORE INTO estudiantes (nombre, matricula, materia_id, promedio, ano_carrera)\n" +
-                      "VALUES ('Alejandro Cruz Paz', 'EST-2026-099', 2, 94.5, 1);"
-            ),
-            SqlExample(
-                title = "Inserción Segura de Profesor (INSERT OR IGNORE)",
-                category = "Manipulación (DML)",
-                description = "Inserta un nuevo profesor titular con correo único institucional.",
-                sql = "INSERT OR IGNORE INTO profesores (nombre, especialidad, email, departamento)\n" +
-                      "VALUES ('Dr. Fernando Ramos', 'Simulación de Sistemas Cuánticos', 'fernando.ramos@facultadciencias.edu', 'Física Avanzada');"
-            ),
-            SqlExample(
-                title = "Inserción o Reemplazo (REPLACE INTO)",
-                category = "Manipulación (DML)",
-                description = "Si la clave primaria o valor UNIQUE ya existe, actualiza la fila completa (Upsert).",
-                sql = "-- 'REPLACE INTO' actualiza la fila si ya existe o la crea si no existe:\n" +
-                      "REPLACE INTO estudiantes (id, nombre, matricula, materia_id, promedio, ano_carrera)\n" +
-                      "VALUES (1, 'Gabriel Alonso Pérez', 'EST-2024-001', 2, 98.5, 3);"
-            ),
-            SqlExample(
-                title = "Actualización Segura (UPDATE con WHERE)",
-                category = "Manipulación (DML)",
-                description = "Modifica registros específicos mediante su clave primaria o matrícula.",
-                sql = "-- Regla de oro en SQL: Verifica siempre la condición WHERE antes de ejecutar UPDATE\n" +
-                      "UPDATE estudiantes\n" +
-                      "SET promedio = 99.0\n" +
-                      "WHERE matricula = 'EST-2024-002';"
-            ),
-            SqlExample(
-                title = "Eliminación Controlada (DELETE con WHERE)",
-                category = "Manipulación (DML)",
-                description = "Elimina registros que cumplan una condición. Sin WHERE, la tabla quedaría completamente vacía.",
-                sql = "-- Precaución didáctica: Siempre filtra con WHERE o clave primaria (id):\n" +
-                      "DELETE FROM clientes\n" +
-                      "WHERE saldo = 0.0 AND ciudad IS NULL;"
-            ),
-            SqlExample(
-                title = "Relación con INNER JOIN",
-                category = "Relaciones / JOIN",
-                description = "Combina pedidos con sus respectivos clientes usando la clave foránea.",
-                sql = "SELECT p.id AS pedido, c.nombre AS cliente, c.ciudad, p.fecha, p.total\nFROM pedidos p\nINNER JOIN clientes c ON p.cliente_id = c.id;"
-            ),
-            SqlExample(
-                title = "LEFT JOIN con Clientes sin Compras",
-                category = "Relaciones / JOIN",
-                description = "Muestra todos los clientes incluso si aún no han registrado ningún pedido.",
-                sql = "SELECT c.nombre, c.email, p.id AS pedido_id, p.total\nFROM clientes c\nLEFT JOIN pedidos p ON c.id = p.cliente_id;"
-            ),
-            SqlExample(
-                title = "Agrupación y Totalización (GROUP BY)",
-                category = "Agregaciones",
-                description = "Calcula el número de productos y el precio promedio por categoría.",
-                sql = "SELECT categoria, COUNT(*) AS total_items, AVG(precio) AS precio_promedio, SUM(stock) AS stock_total\nFROM productos\nGROUP BY categoria\nHAVING COUNT(*) > 0;"
-            ),
-            SqlExample(
-                title = "Ventas por Categoría (Gráfico)",
-                category = "Gráficos / Visual",
-                description = "Consulta optimizada para visualizar métricas en gráfico de barras o líneas.",
-                sql = "SELECT categoria, SUM(stock) AS stock_total, ROUND(AVG(precio), 2) AS precio_promedio\nFROM productos\nGROUP BY categoria\nORDER BY stock_total DESC;"
-            ),
-            SqlExample(
-                title = "Saldos por Ciudad (Gráfico de Pastel)",
-                category = "Gráficos / Visual",
-                description = "Total de saldo de clientes agrupado por ciudad ideal para gráfico de pastel o dona.",
-                sql = "SELECT ciudad, SUM(saldo) AS saldo_acumulado\nFROM clientes\nWHERE ciudad IS NOT NULL\nGROUP BY ciudad\nORDER BY saldo_acumulado DESC;"
-            ),
-            SqlExample(
-                title = "Subconsulta con IN",
-                category = "Avanzadas",
-                description = "Encuentra clientes que tienen al menos un pedido entregado.",
-                sql = "SELECT nombre, email\nFROM clientes\nWHERE id IN (\n    SELECT cliente_id\n    FROM pedidos\n    WHERE estado = 'Entregado'\n);"
-            ),
-            SqlExample(
-                title = "Creación de Tabla Segura (IF NOT EXISTS)",
-                category = "DDL / Estructura",
-                description = "Crea una tabla con 'IF NOT EXISTS' e inserta con 'INSERT OR IGNORE' para total re-ejecución sin errores.",
-                sql = """
-                    CREATE TABLE IF NOT EXISTS proveedores (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        nombre_empresa TEXT NOT NULL,
-                        telefono TEXT,
-                        pais TEXT DEFAULT 'España'
-                    );
 
-                    INSERT OR IGNORE INTO proveedores (id, nombre_empresa, telefono)
-                    VALUES (1, 'Logística Ibérica SL', '+34 912 345 678');
-                """.trimIndent()
+            // Nivel 2: Intermedio (Cálculos, Promedios y Agrupaciones)
+            SqlExample(
+                title = "3. Promedio por Asignatura en Exámenes de Ingreso",
+                category = "Nivel 2: Intermedio (Cálculos y Agrupaciones)",
+                description = "Promedio de notas en Matemática, Español e Historia redondeado a 2 decimales.",
+                sql = "SELECT \n    ROUND(AVG(nota_matematica), 2) AS Promedio_Mate,\n    ROUND(AVG(nota_espanol), 2) AS Promedio_Espanol,\n    ROUND(AVG(nota_historia), 2) AS Promedio_Historia\nFROM examenes_ingreso;"
             ),
             SqlExample(
-                title = "Inspección de Metadatos (PRAGMA)",
+                title = "4. Carrera Más Popular en 1ra Opción (Demanda)",
+                category = "Nivel 2: Intermedio (Cálculos y Agrupaciones)",
+                description = "Cantidad de estudiantes que solicitaron cada carrera como su primera prioridad.",
+                sql = "SELECT c.nombre_carrera, u.siglas, COUNT(b.id_estudiante) AS Cantidad_Estudiantes\nFROM boletas_solicitud b\nJOIN carreras c ON b.id_carrera = c.id_carrera\nJOIN universidades u ON c.id_universidad = u.id_universidad\nWHERE b.orden_prioridad = 1\nGROUP BY c.nombre_carrera, u.siglas\nORDER BY Cantidad_Estudiantes DESC;"
+            ),
+            SqlExample(
+                title = "5. Comparación de Género en Ingeniería Informática",
+                category = "Nivel 2: Intermedio (Cálculos y Agrupaciones)",
+                description = "Conteo de mujeres y hombres aspirantes a Informática en la CUJAE.",
+                sql = "SELECT e.sexo, COUNT(*) AS Cantidad\nFROM estudiantes e\nJOIN boletas_solicitud b ON e.id_estudiante = b.id_estudiante\nWHERE b.id_carrera = 4 -- Ingeniería Informática\nGROUP BY e.sexo;"
+            ),
+
+            // Nivel 3: Avanzado (Subconsultas y Lógica del Escalafón)
+            SqlExample(
+                title = "6. El Índice de Corte (Nota del Último en Entrar)",
+                category = "Nivel 3: Avanzado (Subconsultas y Escalafón)",
+                description = "Informática tiene 4 plazas. Ordena los 7 aspirantes y con LIMIT 1 OFFSET 3 da la nota de corte.",
+                sql = "SELECT e.nombre_completo, \n       ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS Indice_Final\nFROM estudiantes e\nJOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante\nJOIN boletas_solicitud b ON e.id_estudiante = b.id_estudiante\nWHERE b.id_carrera = 4\nORDER BY Indice_Final DESC\nLIMIT 1 OFFSET 3;"
+            ),
+            SqlExample(
+                title = "7. El 'Efecto Dominó' (Plan B de los Fuera de Corte)",
+                category = "Nivel 3: Avanzado (Subconsultas y Escalafón)",
+                description = "Estudiantes fuera del Top 4 de Informática y su segunda opción de carrera.",
+                sql = "SELECT \n    e.nombre_completo AS Estudiante,\n    ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS Indice_Final,\n    c2.nombre_carrera AS Segunda_Opcion,\n    u2.siglas AS Universidad_Plan_B\nFROM estudiantes e\nJOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante\nJOIN boletas_solicitud b1 ON e.id_estudiante = b1.id_estudiante AND b1.id_carrera = 4\nJOIN boletas_solicitud b2 ON e.id_estudiante = b2.id_estudiante AND b2.orden_prioridad = 2\nJOIN carreras c2 ON b2.id_carrera = c2.id_carrera\nJOIN universidades u2 ON c2.id_universidad = u2.id_universidad\nWHERE e.id_estudiante NOT IN (\n    SELECT e2.id_estudiante\n    FROM estudiantes e2\n    JOIN examenes_ingreso ex2 ON e2.id_estudiante = ex2.id_estudiante\n    JOIN boletas_solicitud b3 ON e2.id_estudiante = b3.id_estudiante\n    WHERE b3.id_carrera = 4\n    ORDER BY (e2.indice_academico * 0.5) + (((ex2.nota_matematica + ex2.nota_espanol + ex2.nota_historia) / 3.0) * 0.5) DESC\n    LIMIT 4\n)\nORDER BY Indice_Final DESC;"
+            ),
+
+            // Nivel 4: Nivel Dios (CTE y Window Functions)
+            SqlExample(
+                title = "8. Escalafón Exacto por Carrera (ROW_NUMBER)",
+                category = "Nivel 4: Window Functions & CTE",
+                description = "Asigna a cada estudiante su número de puesto dentro de la carrera que solicitó.",
+                sql = "WITH NotasFinales AS (\n    SELECT \n        e.nombre_completo,\n        b.id_carrera,\n        ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS indice_final\n    FROM estudiantes e\n    JOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante\n    JOIN boletas_solicitud b ON e.id_estudiante = b.id_estudiante\n)\nSELECT \n    c.nombre_carrera,\n    nf.nombre_completo,\n    nf.indice_final,\n    ROW_NUMBER() OVER (PARTITION BY nf.id_carrera ORDER BY nf.indice_final DESC) AS Puesto_En_Carrera\nFROM NotasFinales nf\nJOIN carreras c ON nf.id_carrera = c.id_carrera\nORDER BY c.nombre_carrera, Puesto_En_Carrera;"
+            ),
+            SqlExample(
+                title = "9. Simulador de Primer Otorgamiento (Plazas vs Demanda)",
+                category = "Nivel 4: Window Functions & CTE",
+                description = "Cruza el puesto con las plazas ofertadas: '¡ADENTRO!' si puesto <= plazas, o 'Lista de espera'.",
+                sql = "WITH Escalafon AS (\n    SELECT \n        b.id_estudiante,\n        b.id_carrera,\n        ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS indice_final,\n        ROW_NUMBER() OVER (PARTITION BY b.id_carrera ORDER BY ((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5)) DESC) AS puesto\n    FROM boletas_solicitud b\n    JOIN estudiantes e ON b.id_estudiante = e.id_estudiante\n    JOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante\n    WHERE b.orden_prioridad = 1 -- Evaluando solo la primera opción\n)\nSELECT \n    e.nombre_completo,\n    c.nombre_carrera,\n    esc.indice_final,\n    po.cantidad_plazas,\n    CASE \n        WHEN esc.puesto <= po.cantidad_plazas THEN '¡ADENTRO!'\n        ELSE 'Lista de espera'\n    END AS Resultado_Otorgamiento\nFROM Escalafon esc\nJOIN estudiantes e ON esc.id_estudiante = e.id_estudiante\nJOIN carreras c ON esc.id_carrera = c.id_carrera\nJOIN plazas_oferta po ON c.id_carrera = po.id_carrera\nORDER BY c.nombre_carrera, esc.puesto;"
+            ),
+
+            // Nivel 5: Escalafón General Ponderado con Criterios de Desempate
+            SqlExample(
+                title = "10. Escalafón General Integral con Desempate",
+                category = "Nivel 5: Escalafón Ponderado Completo",
+                description = "Ranking oficial de todos los aspirantes: 50% Preuniversitario + 50% Exámenes con desempate por Matemática.",
+                sql = "SELECT \n    ROW_NUMBER() OVER (\n        ORDER BY \n            ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) DESC,\n            ex.nota_matematica DESC,\n            e.indice_academico DESC\n    ) AS Puesto_General,\n    e.nombre_completo,\n    e.sexo,\n    e.centro_estudio,\n    e.indice_academico,\n    ex.nota_matematica AS Mate,\n    ex.nota_espanol AS Esp,\n    ex.nota_historia AS Hist,\n    ROUND((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0, 2) AS Prom_Examenes,\n    ROUND((e.indice_academico * 0.5) + (((ex.nota_matematica + ex.nota_espanol + ex.nota_historia) / 3.0) * 0.5), 2) AS Indice_Final\nFROM estudiantes e\nJOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante\nORDER BY Puesto_General ASC;"
+            ),
+
+            // Utilidades DDL y SQLite
+            SqlExample(
+                title = "Inspección de Esquema (PRAGMA table_info)",
                 category = "Utilidades SQLite",
-                description = "Consulta la estructura interna y tipos de datos de una tabla.",
-                sql = "PRAGMA table_info(clientes);"
+                description = "Consulta la estructura interna, tipos de datos y restricciones de la tabla estudiantes.",
+                sql = "PRAGMA table_info(estudiantes);"
             ),
             SqlExample(
-                title = "Plan de Ejecución (EXPLAIN QUERY PLAN)",
+                title = "Inspección de Relaciones (PRAGMA foreign_key_list)",
                 category = "Utilidades SQLite",
-                description = "Analiza cómo SQLite resolverá y optimizará la consulta.",
-                sql = "EXPLAIN QUERY PLAN\nSELECT * FROM pedidos WHERE cliente_id = 1;"
+                description = "Lista las claves foráneas activas y tablas padre para la tabla boletas_solicitud.",
+                sql = "PRAGMA foreign_key_list(boletas_solicitud);"
+            ),
+
+            // Sección Didáctica: Solución de Errores Frecuentes
+            SqlExample(
+                title = "Evitar Error de INSERT Duplicado (INSERT OR IGNORE)",
+                category = "Solución de Errores",
+                description = "Omite la inserción si el ID o clave UNIQUE ya existe, evitando 'UNIQUE constraint failed'.",
+                sql = "-- Si el carnet ya existe, no lanza error y continúa\nINSERT OR IGNORE INTO estudiantes (\n    carnet_identidad, carnet_preuniversitario, nombre_completo, sexo,\n    via_ingreso, indice_academico, provincia, municipio, centro_estudio\n) VALUES (\n    '95010112345', '2026-001', 'Ana María López', 'F',\n    'Preuniversitario', 98.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'\n);"
             ),
             SqlExample(
-                title = "Provincias de Cuba por Población",
-                category = "Cuba Geografía & Cultura",
-                description = "Lista las provincias ordenadas de mayor a menor población con su capital y región.",
-                sql = "-- Consulta para la base 'cuba_geografia.db':\nSELECT nombre, capital, region, poblacion, area_km2\nFROM provincias\nORDER BY poblacion DESC;"
+                title = "Actualizar Registro si ya Existe (INSERT OR REPLACE)",
+                category = "Solución de Errores",
+                description = "Actualiza los datos del registro si la clave primaria ya existía en la base.",
+                sql = "-- Si existe el id=1, sobreescribe sus datos (UPSERT)\nINSERT OR REPLACE INTO estudiantes (\n    id_estudiante, carnet_identidad, carnet_preuniversitario, nombre_completo, sexo,\n    via_ingreso, indice_academico, provincia, municipio, centro_estudio\n) VALUES (\n    1, '95010112345', '2026-001', 'Ana María López Actualizada', 'F',\n    'Preuniversitario', 99.00, 'Holguín', 'Moa', 'IPU Antonio López Fernández'\n);"
             ),
             SqlExample(
-                title = "Sitios Patrimonio de la Humanidad (UNESCO)",
-                category = "Cuba Geografía & Cultura",
-                description = "Lugares de interés histórico y natural en Cuba con reconocimiento UNESCO vinculados a su provincia.",
-                sql = "SELECT l.nombre AS sitio_patrimonial, l.tipo, p.nombre AS provincia, p.region\nFROM lugares_interes l\nINNER JOIN provincias p ON l.provincia_id = p.id\nWHERE l.patrimonio_unesco = 1\nORDER BY p.nombre ASC;"
+                title = "Creación Segura de Tablas (CREATE TABLE IF NOT EXISTS)",
+                category = "Solución de Errores",
+                description = "Evita 'table ... already exists' permitiendo volver a ejecutar el script cuantas veces quieras.",
+                sql = "-- La cláusula IF NOT EXISTS asegura que no falle si la tabla ya existe\nCREATE TABLE IF NOT EXISTS notas_adicionales (\n    id_nota INTEGER PRIMARY KEY AUTOINCREMENT,\n    id_estudiante INTEGER NOT NULL,\n    materia TEXT NOT NULL,\n    puntos REAL CHECK (puntos BETWEEN 0 AND 100),\n    FOREIGN KEY (id_estudiante) REFERENCES estudiantes(id_estudiante)\n);"
             ),
             SqlExample(
-                title = "Población y Área por Región de Cuba",
-                category = "Cuba Geografía & Cultura",
-                description = "Agrupa y totaliza la población y el promedio de área por región geográfica cubana.",
-                sql = "SELECT region, COUNT(*) AS total_provincias, SUM(poblacion) AS poblacion_total, ROUND(AVG(area_km2), 1) AS area_promedio_km2\nFROM provincias\nGROUP BY region\nORDER BY poblacion_total DESC;"
+                title = "Reiniciar Tabla desde Cero (DROP TABLE IF EXISTS)",
+                category = "Solución de Errores",
+                description = "Elimina la tabla anterior de forma segura antes de crear una versión limpia.",
+                sql = "-- Borra la tabla vieja si existe para recrearla limpia sin error\nDROP TABLE IF EXISTS tabla_temporal;\n\nCREATE TABLE tabla_temporal (\n    id INTEGER PRIMARY KEY AUTOINCREMENT,\n    descripcion TEXT NOT NULL\n);"
             ),
             SqlExample(
-                title = "Gastronomía Tradicional Cubana",
-                category = "Cuba Geografía & Cultura",
-                description = "Platos y delicias típicas cubanas ordenadas por tipo y región de origen.",
-                sql = "SELECT nombre, tipo, ingrediente_principal, region_origen\nFROM platos_tradicionales\nORDER BY tipo ASC, nombre ASC;"
+                title = "Comillas Simples vs Dobles en Filtros (WHERE)",
+                category = "Solución de Errores",
+                description = "Las cadenas de texto deben ir entre comillas simples ('Moa'). Las comillas dobles (\"Moa\") buscan columnas.",
+                sql = "-- Correcto: comillas simples '...' para valores de texto\nSELECT nombre_completo, municipio, centro_estudio\nFROM estudiantes\nWHERE provincia = 'Holguín' AND municipio = 'Moa';\n-- ❌ Error común: WHERE municipio = \"Moa\" (SQLite busca columna llamada Moa)"
             ),
             SqlExample(
-                title = "Estudiantes, Materias y Profesores (JOIN)",
-                category = "Centro Estudiantil & Ciencias",
-                description = "Relación completa entre estudiantes, la materia que cursan y el profesor titular asignado.",
-                sql = "-- Consulta relacional completa para 'centro_estudiantil.db':\n" +
-                      "SELECT e.matricula, e.nombre AS estudiante, m.nombre AS materia, p.nombre AS profesor, e.promedio\n" +
-                      "FROM estudiantes e\n" +
-                      "INNER JOIN materias m ON e.materia_id = m.id\n" +
-                      "INNER JOIN profesores p ON m.profesor_id = p.id\n" +
-                      "ORDER BY e.promedio DESC;"
+                title = "Prevenir Cálculos Nulos con COALESCE",
+                category = "Solución de Errores",
+                description = "Si un valor es NULL (ej. examen no presentado), COALESCE(nota, 0) evita que todo el cálculo resulte en NULL.",
+                sql = "-- COALESCE reemplaza cualquier valor NULL con 0 para no romper el promedio\nSELECT \n    e.nombre_completo,\n    e.indice_academico,\n    COALESCE(ex.nota_matematica, 0) AS nota_mat,\n    ROUND((e.indice_academico + COALESCE(ex.nota_matematica, 0)) / 2.0, 2) AS promedio_seguro\nFROM estudiantes e\nLEFT JOIN examenes_ingreso ex ON e.id_estudiante = ex.id_estudiante;"
             ),
             SqlExample(
-                title = "Materias impartidas por el Prof. Eduardo Sanamé",
-                category = "Centro Estudiantil & Ciencias",
-                description = "Filtra las materias de Ciencia de Datos e Inteligencia Artificial impartidas por el profesor titular.",
-                sql = "SELECT m.codigo, m.nombre AS materia, m.creditos, m.semestre, p.especialidad\n" +
-                      "FROM materias m\n" +
-                      "INNER JOIN profesores p ON m.profesor_id = p.id\n" +
-                      "WHERE p.nombre LIKE '%Sanamé%';"
-            ),
-            SqlExample(
-                title = "Estudiantes de Honor (Promedio >= 95.0)",
-                category = "Centro Estudiantil & Ciencias",
-                description = "Lista los alumnos de mayor rendimiento académico vinculando su disciplina científica.",
-                sql = "SELECT e.nombre, e.matricula, m.nombre AS materia, e.promedio, e.ano_carrera\n" +
-                      "FROM estudiantes e\n" +
-                      "JOIN materias m ON e.materia_id = m.id\n" +
-                      "WHERE e.promedio >= 95.0\n" +
-                      "ORDER BY e.promedio DESC;"
+                title = "Claves Foráneas: Orden Correcto de Inserción",
+                category = "Solución de Errores",
+                description = "Inserta primero el registro padre antes de referenciar su ID en una tabla hija.",
+                sql = "-- 1. Comprobar que la carrera existe en la tabla padre 'carreras':\nSELECT id_carrera, nombre_carrera FROM carreras WHERE id_carrera = 6;\n\n-- 2. Ahora sí podemos insertar la solicitud en la tabla hija 'boletas_solicitud':\nINSERT INTO boletas_solicitud (id_estudiante, id_carrera, orden_prioridad)\nVALUES (1, 6, 1);"
             )
         )
     }

@@ -202,6 +202,7 @@ fun ProjectsHubDialog(
     var renameInputName by remember { mutableStateOf("") }
     var searchDbQuery by remember { mutableStateOf("") }
     var confirmResetTarget by remember { mutableStateOf<String?>(null) }
+    var confirmDeleteTarget by remember { mutableStateOf<String?>(null) }
 
     // Expanded table summaries per database
     val expandedTablesMap = remember { mutableStateMapOf<String, List<TableSummary>>() }
@@ -494,16 +495,19 @@ fun ProjectsHubDialog(
                                                         ) {
                                                             val cleanDbName = dbName.removeSuffix(".db")
                                                             val dynamicFontSize = when {
-                                                                cleanDbName.length > 24 -> 11.5.sp
-                                                                cleanDbName.length > 18 -> 12.5.sp
-                                                                cleanDbName.length > 13 -> 13.5.sp
-                                                                else -> 14.5.sp
+                                                                cleanDbName.length > 24 -> 11.sp
+                                                                cleanDbName.length > 18 -> 12.sp
+                                                                cleanDbName.length > 13 -> 13.sp
+                                                                else -> 14.sp
                                                             }
                                                             Text(
-                                                                text = cleanDbName,
-                                                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = dynamicFontSize),
+                                                                text = cleanDbName.replace("_", "_\u200B"),
+                                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                                    fontSize = dynamicFontSize,
+                                                                    lineHeight = (dynamicFontSize.value * 1.18).sp
+                                                                ),
                                                                 fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold,
-                                                                maxLines = 1,
+                                                                maxLines = 2,
                                                                 overflow = TextOverflow.Ellipsis,
                                                                 modifier = Modifier.weight(1f, fill = false)
                                                             )
@@ -544,21 +548,20 @@ fun ProjectsHubDialog(
                                                 }
 
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    // 1. Desplegable (Ver tablas) - primero
                                                     IconButton(
-                                                        onClick = {
-                                                            renameTarget = dbName
-                                                            renameInputName = dbName.removeSuffix(".db")
-                                                        },
-                                                        modifier = Modifier.size(32.dp)
+                                                        onClick = { toggleDatabaseTables(dbName) },
+                                                        modifier = Modifier.size(32.dp).testTag("toggle_tables_${dbName}")
                                                     ) {
                                                         Icon(
-                                                            imageVector = Icons.Outlined.Edit,
-                                                            contentDescription = "Renombrar",
-                                                            modifier = Modifier.size(16.dp),
-                                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            imageVector = if (isExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                                                            contentDescription = "Ver tablas",
+                                                            modifier = Modifier.size(20.dp),
+                                                            tint = MaterialTheme.colorScheme.primary
                                                         )
                                                     }
 
+                                                    // 2. Restaurar (Restablecer a fábrica) - segundo
                                                     if (onResetDb != null) {
                                                         IconButton(
                                                             onClick = { confirmResetTarget = dbName },
@@ -575,29 +578,32 @@ fun ProjectsHubDialog(
                                                         }
                                                     }
 
-                                                    if (databases.size > 1 && !isActive) {
-                                                        IconButton(
-                                                            onClick = { onDeleteDb(dbName) },
-                                                            modifier = Modifier.size(32.dp)
-                                                        ) {
-                                                            Icon(
-                                                                imageVector = Icons.Outlined.DeleteOutline,
-                                                                contentDescription = "Eliminar",
-                                                                modifier = Modifier.size(16.dp),
-                                                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                                                            )
-                                                        }
-                                                    }
-
+                                                    // 3. Renombrar
                                                     IconButton(
-                                                        onClick = { toggleDatabaseTables(dbName) },
+                                                        onClick = {
+                                                            renameTarget = dbName
+                                                            renameInputName = dbName.removeSuffix(".db")
+                                                        },
                                                         modifier = Modifier.size(32.dp)
                                                     ) {
                                                         Icon(
-                                                            imageVector = if (isExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
-                                                            contentDescription = "Ver tablas",
-                                                            modifier = Modifier.size(20.dp),
-                                                            tint = MaterialTheme.colorScheme.primary
+                                                            imageVector = Icons.Outlined.Edit,
+                                                            contentDescription = "Renombrar",
+                                                            modifier = Modifier.size(15.dp),
+                                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                                        )
+                                                    }
+
+                                                    // 4. Eliminar (Permitido para cualquier base, incluida la activa) - último
+                                                    IconButton(
+                                                        onClick = { confirmDeleteTarget = dbName },
+                                                        modifier = Modifier.size(32.dp).testTag("delete_db_${dbName}")
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.DeleteOutline,
+                                                            contentDescription = "Eliminar",
+                                                            modifier = Modifier.size(16.dp),
+                                                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
                                                         )
                                                     }
                                                 }
@@ -885,6 +891,53 @@ fun ProjectsHubDialog(
             },
             dismissButton = {
                 TextButton(onClick = { confirmResetTarget = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    if (confirmDeleteTarget != null) {
+        val target = confirmDeleteTarget!!
+        val isTargetActive = target == currentDb
+        AlertDialog(
+            onDismissRequest = { confirmDeleteTarget = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Outlined.DeleteOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Eliminar Base de Datos")
+                }
+            },
+            text = {
+                Text(
+                    text = if (isTargetActive) {
+                        "¿Estás seguro de que deseas eliminar la base de datos activa \"$target\"?\n\nAl ser la base activa, el sistema pasará automáticamente a otra base existente o recreará la base por defecto."
+                    } else {
+                        "¿Estás seguro de que deseas eliminar permanentemente \"$target\"? Esta acción no se puede deshacer."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        confirmDeleteTarget = null
+                        onDeleteDb(target)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteTarget = null }) {
                     Text("Cancelar")
                 }
             }

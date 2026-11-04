@@ -618,12 +618,15 @@ fun SavedQueriesDialog(
 @Composable
 fun SqlExamplesDialog(
     examples: List<SqlExample>,
+    initialCategory: String = "Todas",
     onSelectExample: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var selectedCategory by remember { mutableStateOf("Todas") }
     val categories = remember(examples) {
         listOf("Todas") + examples.map { it.category }.distinct()
+    }
+    var selectedCategory by remember(initialCategory) {
+        mutableStateOf(if (categories.contains(initialCategory)) initialCategory else "Todas")
     }
 
     val filteredExamples = remember(examples, selectedCategory) {

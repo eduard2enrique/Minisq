@@ -1,0 +1,98 @@
+﻿Aquí tienes la tabla completa con los 85 registros del Plan de Plazas de Holguín (curso 2025-2026), organizada exactamente como la verías en tu DB Browser o MiniSQL.
+
+La he dividido en dos secciones (Preuniversitario y Técnico Superior) para que sea más fácil de leer.
+
+🎓 Vía de Ingreso: Preuniversitario (78 carreras)
+
+Código Carrera Plazas CES Universidad Provincia
+102 Ingeniería Geología 11 ISMM Universidad de Moa Holguín
+103 Ingeniería Minas 8 ISMM Universidad de Moa Holguín
+104 Ingeniería Metalúrgica y Materiales 6 ISMM Universidad de Moa Holguín
+105 Ingeniería Eléctrica 10 UHo Universidad de Holguín Holguín
+1051 Ingeniería Eléctrica 18 ISMM Universidad de Moa Holguín
+106 Ingeniería Mecánica 40 UHo Universidad de Holguín Holguín
+1061 Ingeniería Mecánica 21 ISMM Universidad de Moa Holguín
+107 Ingeniería Química 5 UO Universidad de Oriente Santiago de Cuba
+108 Ingeniería en Automática 12 UO Universidad de Oriente Santiago de Cuba
+109 Ingeniería Telecomunicaciones y Electrónica 2 UO Universidad de Oriente Santiago de Cuba
+110 Ingeniería Informática 39 UHo Universidad de Holguín Holguín
+111 Ingeniería Industrial 40 UHo Universidad de Holguín Holguín
+112 Arquitectura 10 UC Universidad de Camagüey Camagüey
+113 Ingeniería Hidráulica 18 UHo Universidad de Holguín Holguín
+114 Ingeniería Civil 54 UHo Universidad de Holguín Holguín
+115 Licenciado Matemática 14 UHo Universidad de Holguín Holguín
+116 Licenciado Ciencia de la Computación 9 UO Universidad de Oriente Santiago de Cuba
+117 Licenciado Física 4 UO Universidad de Oriente Santiago de Cuba
+118 Licenciado Química 8 UO Universidad de Oriente Santiago de Cuba
+119 Licenciado Geografía 3 UH Universidad de La Habana La Habana
+120 Ingeniería Agrícola 9 UG Universidad de Granma Granma
+123 Ingeniería Biomédica 4 UO Universidad de Oriente Santiago de Cuba
+125 Licenciado Física Nuclear 2 UH Universidad de La Habana La Habana
+126 Licenciado en Radioquímica 1 UH Universidad de La Habana La Habana
+127 Licenciado Meteorología 1 UH Universidad de La Habana La Habana
+128 Ingeniería Tecnologías Nucleares y Energéticas 1 UH Universidad de La Habana La Habana
+129 Ingeniería Geofísica 4 CUJAE Univ. Tecnológica de La Habana La Habana
+131 Ingeniería en Ciencias Informáticas 44 UCI Univ. de Ciencias Informáticas La Habana
+133 Ingeniería en Ciberseguridad 4 UCI Univ. de Ciencias Informáticas La Habana
+201 Licenciado Bioquímica 4 UH Universidad de La Habana La Habana
+202 Licenciado Microbiología 2 UH Universidad de La Habana La Habana
+203 Licenciado Ciencias Alimentarias 4 UC Universidad de Camagüey Camagüey
+204 Licenciado Ciencias Farmacéuticas 4 UO Universidad de Oriente Santiago de Cuba
+205 Licenciado Biología 5 UO Universidad de Oriente Santiago de Cuba
+301 Licenciado Historia 9 UHo Universidad de Holguín Holguín
+302 Licenciado Derecho 39 UHo Universidad de Holguín Holguín
+303 Licenciado Historia del Arte 2 UO Universidad de Oriente Santiago de Cuba
+305 Licenciado Ciencia de la Información 10 UHo Universidad de Holguín Holguín
+306 Licenciado Psicología 1 UO Universidad de Oriente Santiago de Cuba
+307 Licenciado Letras 1 UO Universidad de Oriente Santiago de Cuba
+308 Licenciado Filosofía 1 UO Universidad de Oriente Santiago de Cuba
+309 Licenciado Lengua Rusa 1 UH Universidad de La Habana La Habana
+310 Licenciado Lengua Inglesa 13 UHo Universidad de Holguín Holguín
+311 Licenciado Lengua Alemana 1 UH Universidad de La Habana La Habana
+312 Licenciado Lengua Francesa 3 UH Universidad de La Habana La Habana
+313 Licenciado Sociología 8 UO Universidad de Oriente Santiago de Cuba
+314 Lic. Gestión Sociocultural para el Desarrollo 5 UHo Universidad de Holguín Holguín
+315 Licenciado Comunicación Social 10 ULT Universidad de Las Tunas Las Tunas
+325 Diseño Industrial 3 UH Universidad de La Habana La Habana
+333 Diseño en Comunicación Visual 2 UH Universidad de La Habana La Habana
+501 Licenciado Cultura Física 17 UHo Universidad de Holguín Holguín
+601 Ingeniería Agronomía 50 UHo Universidad de Holguín Holguín
+602 Ingeniería Forestal 4 UG Universidad de Granma Granma
+603 Medicina Veterinaria y Zootecnia 12 UG Universidad de Granma Granma
+701 Licenciado Educación Matemática 3 UHo Universidad de Holguín Holguín
+702 Licenciado Educación Español Literatura 3 UHo Universidad de Holguín Holguín
+703 Licenciado Educación en Física 3 UHo Universidad de Holguín Holguín
+704 Licenciado Educación Química 3 UHo Universidad de Holguín Holguín
+705 Licenciado Educación Biología 3 UHo Universidad de Holguín Holguín
+706 Licenciado Educación Geografía 3 UHo Universidad de Holguín Holguín
+707 Licenciado Educación Laboral 3 UHo Universidad de Holguín Holguín
+708 Licenciado Educación Informática 3 UHo Universidad de Holguín Holguín
+711 Lic. Educ. Marxismo Leninismo e Historia 3 UHo Universidad de Holguín Holguín
+713 Licenciado Educación Especial 3 UHo Universidad de Holguín Holguín
+714 Licenciado Educación Primaria 3 UHo Universidad de Holguín Holguín
+715 Licenciado Educación Preescolar 3 UHo Universidad de Holguín Holguín
+720 Licenciado Educación Logopedia 3 UHo Universidad de Holguín Holguín
+721 Licenciado Educación Pedagogía Agropecuaria 2 UHo Universidad de Holguín Holguín
+724 Licenciado Educación Mecánica 2 UHo Universidad de Holguín Holguín
+725 Licenciado Educación Construcción 2 UHo Universidad de Holguín Holguín
+726 Licenciado Educación Eléctrica 2 UHo Universidad de Holguín Holguín
+728 Licenciado Educación Economía 2 UHo Universidad de Holguín Holguín
+731 Licenciado Educación Lenguas Extranjeras 5 UHo Universidad de Holguín Holguín
+740 Licenciado Educación Artística 3 UHo Universidad de Holguín Holguín
+801 Licenciado Economía 50 UHo Universidad de Holguín Holguín
+802 Licenciado Contabilidad y Finanzas 45 UHo Universidad de Holguín Holguín
+8021 Licenciado Contabilidad y Finanzas 25 ISMM Universidad de Moa Holguín
+803 Licenciado Turismo 15 UHo Universidad de Holguín Holguín
+
+---
+
+🔧 Vía de Ingreso: Técnico Superior (7 carreras)
+
+Código Carrera Plazas CES Universidad Provincia
+921 TS en Aduana 40 Esc. Nac. de Formación Aduanera Escuela Nacional de Formación Aduanera La Habana
+938 TS en Redes y Seguridad Informática 33 UCI Univ. de Ciencias Informáticas La Habana
+949 TS en Asistencia turística 20 UHo Universidad de Holguín Holguín
+950 TS en Servicios técnicos para el Turismo 15 UHo Universidad de Holguín Holguín
+953 TS en Auditoría 25 UHo Universidad de Holguín Holguín
+954 TS Interpretación de lengua de señas cubana 15 UHo Universidad de Holguín Holguín
+1003 TS en Gestión de riesgo de impago en el sector turístico 30 UHo Universidad de Holguín Holguín

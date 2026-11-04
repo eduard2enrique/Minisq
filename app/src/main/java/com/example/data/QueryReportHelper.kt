@@ -48,15 +48,40 @@ object QueryReportHelper {
             val nullCount = values.size - nonNullValues.size
             val distinctCount = nonNullValues.distinct().size
 
+            // Determine if column represents an identifier/code rather than a measurable metric
+            val lowerName = colName.lowercase().trim()
+            val isIdentifierOrCode = lowerName == "id" ||
+                lowerName.endsWith("_id") ||
+                lowerName.startsWith("id_") ||
+                lowerName.contains("carnet") ||
+                lowerName.contains("identidad") ||
+                lowerName.contains("dni") ||
+                lowerName.contains("ci") ||
+                lowerName.contains("codigo") ||
+                lowerName.contains("code") ||
+                lowerName.contains("telefono") ||
+                lowerName.contains("phone") ||
+                lowerName.contains("movil") ||
+                lowerName.contains("folio") ||
+                lowerName.contains("tomo") ||
+                lowerName.contains("orden") ||
+                lowerName.contains("prioridad") ||
+                lowerName.contains("opcion") ||
+                lowerName.contains("posicion") ||
+                lowerName.contains("year") ||
+                lowerName.contains("anio") ||
+                lowerName.contains("postal")
+
             // Try parsing numbers (supports period and comma decimal points)
             val parsedNumbers = nonNullValues.mapNotNull { raw ->
                 val normalized = raw.trim().replace(',', '.')
                 normalized.toDoubleOrNull()
             }
 
-            val isNumeric = nonNullValues.isNotEmpty() && parsedNumbers.size == nonNullValues.size
+            val isPureNumber = nonNullValues.isNotEmpty() && parsedNumbers.size == nonNullValues.size
+            val isMeasurableMetric = isPureNumber && !isIdentifierOrCode
 
-            if (isNumeric && parsedNumbers.isNotEmpty()) {
+            if (isMeasurableMetric && parsedNumbers.isNotEmpty()) {
                 val minVal = parsedNumbers.minOrNull() ?: 0.0
                 val maxVal = parsedNumbers.maxOrNull() ?: 0.0
                 val sumVal = parsedNumbers.sum()
