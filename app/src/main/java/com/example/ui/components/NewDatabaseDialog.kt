@@ -89,6 +89,7 @@ fun NewDatabaseDialog(
 
     val templateOptions = remember {
         listOf(
+            Triple("secretaria_escolar", "Secretaría Escolar & Historial (4 tablas)", Icons.Outlined.School),
             Triple("facultad_ciencias", "Facultad de Ciencias & Tecnología (3 tablas)", Icons.Outlined.School),
             Triple("cuba", "Cuba: Provincias & Cultura (3 tablas)", Icons.Outlined.Place),
             Triple("sample", "Tienda & Clientes (4 tablas)", Icons.Outlined.Storefront),

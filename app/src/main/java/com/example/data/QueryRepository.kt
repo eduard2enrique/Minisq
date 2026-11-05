@@ -335,6 +335,44 @@ class QueryRepository(context: Context) {
                 category = "Solución de Errores",
                 description = "Inserta primero el registro padre antes de referenciar su ID en una tabla hija.",
                 sql = "-- 1. Comprobar que la carrera existe en la tabla padre 'carreras':\nSELECT id_carrera, nombre_carrera FROM carreras WHERE id_carrera = 6;\n\n-- 2. Ahora sí podemos insertar la solicitud en la tabla hija 'boletas_solicitud':\nINSERT INTO boletas_solicitud (id_estudiante, id_carrera, orden_prioridad)\nVALUES (1, 6, 1);"
+            ),
+
+            // Sección: Secretaría Escolar (Historial y Reasignaciones)
+            SqlExample(
+                title = "Secretaría: Grupos, Aulas y Capacidad (Básica)",
+                category = "Secretaría Escolar (Historial y Reasignaciones)",
+                description = "Lista todos los grupos escolares con su grado, especialidad, aula asignada y profesor tutor.",
+                sql = "SELECT codigo_grupo, grado, especialidad, aula, profesor_tutor, capacidad_maxima\nFROM grupos\nORDER BY grado ASC, codigo_grupo ASC;"
+            ),
+            SqlExample(
+                title = "Secretaría: Materias por Departamento (Básica)",
+                category = "Secretaría Escolar (Historial y Reasignaciones)",
+                description = "Plan docente escolar con horas semanales y profesores titulares por departamento.",
+                sql = "SELECT codigo_materia, nombre_materia, departamento, horas_semanales, profesor_titular\nFROM materias\nORDER BY departamento, horas_semanales DESC;"
+            ),
+            SqlExample(
+                title = "Secretaría: Historial de Reasignaciones (Intermedia - JOIN Doble)",
+                category = "Secretaría Escolar (Historial y Reasignaciones)",
+                description = "Trazabilidad de movimientos: qué estudiante se reasignó, de qué grupo a qué grupo, fecha y motivo.",
+                sql = "SELECT \n    r.fecha_tramite,\n    r.nombre_estudiante,\n    r.tipo_tramite,\n    g_ant.codigo_grupo AS grupo_origen,\n    g_nue.codigo_grupo AS grupo_destino,\n    r.motivo,\n    r.secretario_tramitador\nFROM reasignaciones r\nLEFT JOIN grupos g_ant ON r.id_grupo_anterior = g_ant.id_grupo\nLEFT JOIN grupos g_nue ON r.id_grupo_nuevo = g_nue.id_grupo\nORDER BY r.fecha_tramite DESC;"
+            ),
+            SqlExample(
+                title = "Secretaría: Matrícula Actual vs Plazas Libres (Intermedia - COUNT)",
+                category = "Secretaría Escolar (Historial y Reasignaciones)",
+                description = "Compara la capacidad máxima de cada aula contra los estudiantes activos matriculados.",
+                sql = "SELECT \n    g.codigo_grupo,\n    g.aula,\n    g.capacidad_maxima,\n    COUNT(e.id_estudiante) AS matricula_actual,\n    (g.capacidad_maxima - COUNT(e.id_estudiante)) AS plazas_libres\nFROM grupos g\nLEFT JOIN estudiantes_matricula e ON g.id_grupo = e.id_grupo AND e.estado_matricula = 'Activo'\nGROUP BY g.id_grupo\nORDER BY g.grado, g.codigo_grupo;"
+            ),
+            SqlExample(
+                title = "Secretaría: Balance de Movimientos por Grupo (Avanzada - Auditoría)",
+                category = "Secretaría Escolar (Historial y Reasignaciones)",
+                description = "Auditoría de secretaría: calcula salidas, entradas y balance neto de reasignaciones por grupo.",
+                sql = "SELECT \n    g.codigo_grupo,\n    g.profesor_tutor,\n    SUM(CASE WHEN r.id_grupo_anterior = g.id_grupo THEN 1 ELSE 0 END) AS total_salidas,\n    SUM(CASE WHEN r.id_grupo_nuevo = g.id_grupo THEN 1 ELSE 0 END) AS total_entradas,\n    (SUM(CASE WHEN r.id_grupo_nuevo = g.id_grupo THEN 1 ELSE 0 END) - \n     SUM(CASE WHEN r.id_grupo_anterior = g.id_grupo THEN 1 ELSE 0 END)) AS balance_neto\nFROM grupos g\nLEFT JOIN reasignaciones r ON g.id_grupo IN (r.id_grupo_anterior, r.id_grupo_nuevo)\nGROUP BY g.id_grupo\nORDER BY balance_neto DESC;"
+            ),
+            SqlExample(
+                title = "Secretaría: Auditoría de Trámites por Tipo (Avanzada - Agregación)",
+                category = "Secretaría Escolar (Historial y Reasignaciones)",
+                description = "Resumen gerencial de trámites de secretaría con porcentajes y motivos registrados.",
+                sql = "SELECT \n    tipo_tramite,\n    COUNT(*) AS total_tramites,\n    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM reasignaciones), 1) AS porcentaje,\n    GROUP_CONCAT(DISTINCT motivo) AS motivos_resumidos\nFROM reasignaciones\nGROUP BY tipo_tramite\nORDER BY total_tramites DESC;"
             )
         )
     }

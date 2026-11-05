@@ -254,6 +254,15 @@ fun TablesScreen(
         }
     }
 
+    LaunchedEffect(activeDbName) {
+        selectedTableName = null
+        selectedTableSchema = null
+        tableDataResult = null
+        selectedRowIndices.clear()
+        searchQuery = ""
+        onRefreshTables()
+    }
+
     LaunchedEffect(selectedTableName) {
         selectedTableName?.let { loadTableData(it) }
     }

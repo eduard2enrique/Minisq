@@ -128,6 +128,15 @@ fun ProjectsHubDialog(
                 defaultProjectName = "mi_nueva_base"
             ),
             DatabaseTemplateInfo(
+                id = "secretaria_escolar",
+                title = "Secretaría Escolar (Historial y Reasignaciones)",
+                description = "Prototipo de secretaría docente: grupos, materias, matrícula y tabla de reasignaciones con historial de trámites, permutas y auditoría.",
+                icon = Icons.Outlined.School,
+                iconColor = Color(0xFF10B981),
+                tables = listOf("grupos", "materias", "estudiantes_matricula", "reasignaciones"),
+                defaultProjectName = "secretaria_escolar"
+            ),
+            DatabaseTemplateInfo(
                 id = "facultad_ciencias",
                 title = "Facultad de Ciencias & Tecnología",
                 description = "Facultad académica con disciplinas avanzadas (Datos, IA, Ciberseguridad, Física), 12 profesores (Prof. Eduardo Sanamé Durán) y 12 estudiantes.",

@@ -68,6 +68,11 @@ class DatabaseManager(private val context: Context) {
             createSampleStore(storeFile)
             prefs.edit().putString("template_tienda_comercial.db", "sample").apply()
         }
+        val secretariaFile = File(dbDir, "secretaria_escolar.db")
+        if (!secretariaFile.exists()) {
+            createSampleSecretariaEscolar(secretariaFile)
+            prefs.edit().putString("template_secretaria_escolar.db", "secretaria_escolar").apply()
+        }
     }
 
     @Synchronized
@@ -118,6 +123,7 @@ class DatabaseManager(private val context: Context) {
         when (template) {
             "otorgamiento_carreras", "ingreso_superior" -> createSampleOtorgamientoCarreras(file)
             "facultad_ciencias", "centro_estudiantil" -> createSampleFacultadCiencias(file)
+            "secretaria_escolar", "secretaria" -> createSampleSecretariaEscolar(file)
             "cuba" -> createSampleCuba(file)
             "ecommerce" -> createSampleEcommerce(file)
             "university" -> createSampleUniversity(file)
@@ -153,6 +159,7 @@ class DatabaseManager(private val context: Context) {
         val storedTemplate = prefs.getString("template_$dbName", null)
         val template = storedTemplate ?: when {
             dbName.contains("otorgamiento", ignoreCase = true) || dbName.contains("carrera", ignoreCase = true) || dbName.contains("ingreso", ignoreCase = true) -> "otorgamiento_carreras"
+            dbName.contains("secretaria", ignoreCase = true) || dbName.contains("escuela", ignoreCase = true) -> "secretaria_escolar"
             dbName.contains("facultad", ignoreCase = true) || dbName.contains("centro", ignoreCase = true) || dbName.contains("estudiantil", ignoreCase = true) || dbName.contains("ciencia", ignoreCase = true) -> "facultad_ciencias"
             dbName.contains("cuba", ignoreCase = true) -> "cuba"
             dbName.contains("ecommerce", ignoreCase = true) -> "ecommerce"
@@ -171,6 +178,7 @@ class DatabaseManager(private val context: Context) {
         when (template) {
             "otorgamiento_carreras", "ingreso_superior" -> createSampleOtorgamientoCarreras(file)
             "facultad_ciencias", "centro_estudiantil" -> createSampleFacultadCiencias(file)
+            "secretaria_escolar", "secretaria" -> createSampleSecretariaEscolar(file)
             "cuba" -> createSampleCuba(file)
             "ecommerce" -> createSampleEcommerce(file)
             "university" -> createSampleUniversity(file)
@@ -1578,6 +1586,143 @@ class DatabaseManager(private val context: Context) {
                 (33, 9, 1, 'UO', 'Diferida', 1, 'Otorgado'),
                 (34, 4, 1, 'UHo', 'Diferida', 1, 'Otorgado'),
                 (35, 7, 1, 'UHo', 'Apto FAR', 1, 'Otorgado');
+            """.trimIndent())
+        } finally {
+            db.close()
+        }
+    }
+
+    private fun createSampleSecretariaEscolar(file: File) {
+        val db = SQLiteDatabase.openOrCreateDatabase(file, null)
+        try {
+            db.execSQL("PRAGMA foreign_keys = ON;")
+
+            // 1. Grupos escolares
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS grupos (
+                    id_grupo INTEGER PRIMARY KEY AUTOINCREMENT,
+                    codigo_grupo TEXT UNIQUE NOT NULL,
+                    grado INTEGER NOT NULL CHECK (grado IN (10, 11, 12)),
+                    especialidad TEXT NOT NULL DEFAULT 'General',
+                    capacidad_maxima INTEGER NOT NULL DEFAULT 35,
+                    aula TEXT NOT NULL,
+                    profesor_tutor TEXT NOT NULL,
+                    turno TEXT NOT NULL DEFAULT 'Mañana'
+                );
+            """.trimIndent())
+
+            // 2. Materias y claustro docente
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS materias (
+                    id_materia INTEGER PRIMARY KEY AUTOINCREMENT,
+                    codigo_materia TEXT UNIQUE NOT NULL,
+                    nombre_materia TEXT NOT NULL,
+                    departamento TEXT NOT NULL,
+                    horas_semanales INTEGER NOT NULL CHECK (horas_semanales BETWEEN 1 AND 10),
+                    profesor_titular TEXT NOT NULL
+                );
+            """.trimIndent())
+
+            // 3. Estudiantes y matrícula oficial
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS estudiantes_matricula (
+                    id_estudiante INTEGER PRIMARY KEY AUTOINCREMENT,
+                    numero_expediente TEXT UNIQUE NOT NULL,
+                    nombre_completo TEXT NOT NULL,
+                    sexo TEXT CHECK (sexo IN ('M', 'F')),
+                    id_grupo INTEGER NOT NULL,
+                    promedio_ingreso REAL CHECK (promedio_ingreso BETWEEN 0 AND 100),
+                    estado_matricula TEXT NOT NULL DEFAULT 'Activo',
+                    fecha_inscripcion TEXT NOT NULL DEFAULT '2025-09-01',
+                    FOREIGN KEY (id_grupo) REFERENCES grupos(id_grupo)
+                );
+            """.trimIndent())
+
+            // 4. Historial de reasignaciones y trámites de secretaría
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS reasignaciones (
+                    id_reasignacion INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fecha_tramite TEXT NOT NULL,
+                    tipo_tramite TEXT NOT NULL,
+                    id_estudiante INTEGER,
+                    nombre_estudiante TEXT NOT NULL,
+                    id_grupo_anterior INTEGER,
+                    id_grupo_nuevo INTEGER,
+                    id_materia INTEGER,
+                    motivo TEXT NOT NULL,
+                    secretario_tramitador TEXT NOT NULL,
+                    estado_dictamen TEXT NOT NULL DEFAULT 'Aprobado',
+                    observaciones TEXT,
+                    FOREIGN KEY (id_estudiante) REFERENCES estudiantes_matricula(id_estudiante),
+                    FOREIGN KEY (id_grupo_anterior) REFERENCES grupos(id_grupo),
+                    FOREIGN KEY (id_grupo_nuevo) REFERENCES grupos(id_grupo),
+                    FOREIGN KEY (id_materia) REFERENCES materias(id_materia)
+                );
+            """.trimIndent())
+
+            // Inserciones de grupos
+            db.execSQL("""
+                INSERT OR IGNORE INTO grupos (id_grupo, codigo_grupo, grado, especialidad, capacidad_maxima, aula, profesor_tutor, turno) VALUES
+                (1, '10mo-A', 10, 'Ciencias Exactas', 35, 'Aula 101', 'Lic. Beatriz Peña Reyes', 'Mañana'),
+                (2, '10mo-B', 10, 'Humanidades', 35, 'Aula 102', 'MSc. Carlos Estrada Pérez', 'Mañana'),
+                (3, '10mo-C', 10, 'General', 32, 'Aula 103', 'Lic. Tania Valdés Ochoa', 'Tarde'),
+                (4, '11no-A', 11, 'Ciencias Exactas', 34, 'Aula 201', 'MSc. Ernesto Leyva Rojas', 'Mañana'),
+                (5, '11no-B', 11, 'Ciencias Naturales', 34, 'Aula 202', 'Lic. Diana Marrero Fat', 'Mañana'),
+                (6, '12mo-A', 12, 'Vocacional Ciencias', 30, 'Aula 301', 'Dr. Jorge Almaguer Batista', 'Mañana'),
+                (7, '12mo-B', 12, 'Humanidades y Letras', 30, 'Aula 302', 'Lic. Elena Ramos Ferrás', 'Mañana');
+            """.trimIndent())
+
+            // Inserciones de materias
+            db.execSQL("""
+                INSERT OR IGNORE INTO materias (id_materia, codigo_materia, nombre_materia, departamento, horas_semanales, profesor_titular) VALUES
+                (1, 'MAT-10', 'Matemática Superior I', 'Ciencias Exactas', 6, 'MSc. Roberto Durán Castillo'),
+                (2, 'FIS-10', 'Física Clásica y Mecánica', 'Ciencias Exactas', 5, 'Lic. Manuel Fuentes Silva'),
+                (3, 'QUIM-10', 'Química Inorgánica', 'Ciencias Naturales', 4, 'Dra. Celia Tamayo Núñez'),
+                (4, 'ESP-10', 'Español-Literatura', 'Humanidades', 5, 'Lic. Isabel González Cruz'),
+                (5, 'HIST-10', 'Historia Contemporánea', 'Humanidades', 4, 'MSc. Armando Batista Romero'),
+                (6, 'INF-10', 'Informática y Algoritmos', 'Tecnología', 4, 'Lic. Yanet Pérez Fat'),
+                (7, 'BIOL-11', 'Biología Molecular', 'Ciencias Naturales', 5, 'Dra. Celia Tamayo Núñez'),
+                (8, 'ING-10', 'Inglés Comunicativo', 'Idiomas', 3, 'Lic. Roxana Díaz Ferrás');
+            """.trimIndent())
+
+            // Inserciones de estudiantes_matricula
+            db.execSQL("""
+                INSERT OR IGNORE INTO estudiantes_matricula (id_estudiante, numero_expediente, nombre_completo, sexo, id_grupo, promedio_ingreso, estado_matricula, fecha_inscripcion) VALUES
+                (1, 'EXP-2025-001', 'Alejandro Morales Tamayo', 'M', 1, 98.40, 'Activo', '2025-09-01'),
+                (2, 'EXP-2025-002', 'Sofía Castillo Durán', 'F', 1, 97.80, 'Activo', '2025-09-01'),
+                (3, 'EXP-2025-003', 'Carlos Manuel Ferrás Peña', 'M', 1, 92.50, 'Activo', '2025-09-01'),
+                (4, 'EXP-2025-004', 'Melisa Leyva Rojas', 'F', 2, 95.10, 'Activo', '2025-09-01'),
+                (5, 'EXP-2025-005', 'Javier Batista Ochoa', 'M', 1, 96.20, 'Activo', '2025-09-01'),
+                (6, 'EXP-2025-006', 'Daniela Cruz Almaguer', 'F', 2, 89.90, 'Activo', '2025-09-01'),
+                (7, 'EXP-2025-007', 'Ernesto Marrero Silva', 'M', 1, 91.00, 'Activo', '2025-09-01'),
+                (8, 'EXP-2025-008', 'Camila Valdés Fat', 'F', 4, 99.10, 'Activo', '2025-09-01'),
+                (9, 'EXP-2025-009', 'Marcos Tamayo Leyva', 'M', 4, 94.75, 'Activo', '2025-09-01'),
+                (10, 'EXP-2025-010', 'Laura Ramos Fuentes', 'F', 5, 93.80, 'Activo', '2025-09-01'),
+                (11, 'EXP-2025-011', 'David Estrada Núñez', 'M', 4, 90.60, 'Activo', '2025-09-01'),
+                (12, 'EXP-2025-012', 'Beatriz Silva Batista', 'F', 6, 99.50, 'Activo', '2025-09-01'),
+                (13, 'EXP-2025-013', 'Adrián Pérez Cruz', 'M', 6, 97.40, 'Activo', '2025-09-01'),
+                (14, 'EXP-2025-014', 'Gabriela Fat Romero', 'F', 7, 94.20, 'Activo', '2025-09-01'),
+                (15, 'EXP-2025-015', 'Héctor Leyva Almaguer', 'M', 7, 91.80, 'Baja por Traslado', '2025-09-01'),
+                (16, 'EXP-2025-016', 'Claudia Ferrás Ochoa', 'F', 1, 95.70, 'Activo', '2025-09-01'),
+                (17, 'EXP-2025-017', 'Jorge Luis Morales Durán', 'M', 3, 88.50, 'Activo', '2025-09-01'),
+                (18, 'EXP-2025-018', 'Patricia Tamayo Castillo', 'F', 4, 96.90, 'Activo', '2025-09-01'),
+                (19, 'EXP-2025-019', 'Rubén Almaguer Ramos', 'M', 4, 92.15, 'Activo', '2025-09-01'),
+                (20, 'EXP-2025-020', 'Natalia Fuentes Valdés', 'F', 6, 98.70, 'Activo', '2025-09-01');
+            """.trimIndent())
+
+            // Inserciones de reasignaciones (Historial de trámites)
+            db.execSQL("""
+                INSERT OR IGNORE INTO reasignaciones (id_reasignacion, fecha_tramite, tipo_tramite, id_estudiante, nombre_estudiante, id_grupo_anterior, id_grupo_nuevo, id_materia, motivo, secretario_tramitador, estado_dictamen, observaciones) VALUES
+                (1, '2025-09-12', 'Cambio de Grupo', 3, 'Carlos Manuel Ferrás Peña', 2, 1, 1, 'Afinidad vocacional demostrada hacia Ciencias Exactas', 'Lic. Beatriz Peña Reyes', 'Aprobado', 'Se valida prueba de aptitud en Matemática.'),
+                (2, '2025-09-15', 'Permuta', 6, 'Daniela Cruz Almaguer', 3, 2, NULL, 'Permuta acordada con estudiante EXP-2025-017 por cercanía de residencia', 'Lic. Tania Valdés Ochoa', 'Aprobado', 'Firmado por ambos tutores legales en secretaría.'),
+                (3, '2025-09-18', 'Permuta', 17, 'Jorge Luis Morales Durán', 2, 3, NULL, 'Contraparte de permuta acordada con estudiante EXP-2025-006', 'Lic. Tania Valdés Ochoa', 'Aprobado', 'Pasa al turno de la tarde por conveniencia de transporte.'),
+                (4, '2025-09-25', 'Nivelación de Matrícula', 7, 'Ernesto Marrero Silva', 3, 1, NULL, 'Nivelación de sobrecupo en aula 103 por balance de capacidad', 'MSc. Ernesto Leyva Rojas', 'Aprobado', 'Capacidad en aula 101 disponible tras baja.'),
+                (5, '2025-10-04', 'Cambio de Especialidad', 11, 'David Estrada Núñez', 5, 4, 2, 'Reorientación de Ciencias Naturales a Ciencias Exactas (Física)', 'Lic. Beatriz Peña Reyes', 'Aprobado', 'Autorizado por Consejo de Dirección.'),
+                (6, '2025-10-12', 'Ajuste Curricular Optativo', 4, 'Melisa Leyva Rojas', 2, 2, 6, 'Inscripción extraordinaria en Informática y Algoritmos', 'Lic. Yanet Pérez Fat', 'Aprobado', 'Excelente rendimiento previo en lógica.'),
+                (7, '2025-10-20', 'Baja por Traslado', 15, 'Héctor Leyva Almaguer', 7, NULL, NULL, 'Traslado de centro escolar por cambio de provincia familiar', 'Lic. Beatriz Peña Reyes', 'Aprobado', 'Expediente remitido a IPVCE José Martí.'),
+                (8, '2025-10-28', 'Cambio de Grupo', 19, 'Rubén Almaguer Ramos', 5, 4, 1, 'Rendimiento sobresaliente en concurso provincial de Matemática', 'MSc. Roberto Durán Castillo', 'Aprobado', 'Incorporación a grupo de alto rendimiento.'),
+                (9, '2025-11-02', 'Reasignación de Tutoría', NULL, 'Comité de Grado 10mo', 2, 2, NULL, 'Designación de nuevo tutor por comisión de servicio del titular', 'Lic. Beatriz Peña Reyes', 'Aprobado', 'Asume Lic. Manuel Fuentes Silva temporalmente.'),
+                (10, '2025-11-05', 'Reingreso de Licencia', 10, 'Laura Ramos Fuentes', 5, 5, NULL, 'Reincorporación tras licencia médica de 30 días', 'Lic. Beatriz Peña Reyes', 'Aprobado', 'Plan de recuperación académica asignado.');
             """.trimIndent())
         } finally {
             db.close()

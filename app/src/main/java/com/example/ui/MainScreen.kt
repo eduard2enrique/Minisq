@@ -92,7 +92,12 @@ import com.example.ui.screens.DesignerScreen
 import com.example.ui.screens.ImportExportScreen
 import com.example.ui.screens.QueryScreen
 import com.example.ui.screens.TablesScreen
+import com.example.ui.screens.getDefaultQueryForDatabase
 import com.example.ui.theme.SqlBlue
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.launch
 
 @Composable
@@ -121,10 +126,36 @@ fun MainScreen(
     var externalSelectedSql by remember { mutableStateOf<String?>(null) }
     var externalTriggerExecute by remember { mutableStateOf(false) }
 
+    // Query Editor state persisted across tab navigation and per-database switching
+    val queryPerDbMap = rememberSaveable(
+        saver = androidx.compose.runtime.saveable.mapSaver(
+            save = { map -> map.mapValues { it.value } },
+            restore = { map ->
+                val restored = mutableStateMapOf<String, String>()
+                map.forEach { (k, v) ->
+                    if (v is String) restored[k] = v
+                }
+                restored
+            }
+        )
+    ) {
+        mutableStateMapOf<String, String>()
+    }
+
+    var currentSqlQuery by remember(currentDbName) {
+        val initialText = queryPerDbMap[currentDbName]
+            ?: getDefaultQueryForDatabase(currentDbName, tablesList.map { it.name })
+        mutableStateOf(TextFieldValue(initialText, TextRange(initialText.length)))
+    }
+
+    var lastExecutionResult by remember(currentDbName) {
+        mutableStateOf<SqlExecutionResult?>(null)
+    }
+
     // Refresh tables and database info
     fun refreshDatabaseState() {
+        currentDbName = dbManager.getCurrentDbName()
         scope.launch {
-            currentDbName = dbManager.getCurrentDbName()
             dbList = dbManager.listDatabases()
             tablesList = dbManager.getTables()
         }
@@ -590,6 +621,15 @@ fun MainScreen(
                             onConsumedInitialSql = {
                                 externalSelectedSql = null
                                 externalTriggerExecute = false
+                            },
+                            persistedSqlQuery = currentSqlQuery,
+                            onSqlQueryChange = {
+                                currentSqlQuery = it
+                                queryPerDbMap[currentDbName] = it.text
+                            },
+                            persistedExecutionResult = lastExecutionResult,
+                            onExecutionResultChange = {
+                                lastExecutionResult = it
                             }
                         )
                         1 -> TablesScreen(
@@ -602,6 +642,8 @@ fun MainScreen(
                                 selectedTab = 0
                                 externalSelectedSql = starterSql
                                 externalTriggerExecute = false
+                                currentSqlQuery = TextFieldValue(starterSql, TextRange(starterSql.length))
+                                queryPerDbMap[currentDbName] = starterSql
                             },
                             onResetCurrentDb = {
                                 val ok = dbManager.resetDatabase(currentDbName)
@@ -620,6 +662,8 @@ fun MainScreen(
                                 if (sql != null) {
                                     externalSelectedSql = sql
                                     externalTriggerExecute = false
+                                    currentSqlQuery = TextFieldValue(sql, TextRange(sql.length))
+                                    queryPerDbMap[currentDbName] = sql
                                 }
                             }
                         )

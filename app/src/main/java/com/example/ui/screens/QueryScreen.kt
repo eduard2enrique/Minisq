@@ -69,6 +69,7 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -124,6 +125,10 @@ fun QueryScreen(
     initialSqlToLoad: String? = null,
     triggerExecute: Boolean = false,
     onConsumedInitialSql: () -> Unit = {},
+    persistedSqlQuery: TextFieldValue? = null,
+    onSqlQueryChange: ((TextFieldValue) -> Unit)? = null,
+    persistedExecutionResult: SqlExecutionResult? = null,
+    onExecutionResultChange: ((SqlExecutionResult?) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -135,7 +140,7 @@ fun QueryScreen(
     var resultsSectionY by remember { mutableIntStateOf(-1) }
     var scrollToResultsTrigger by remember { mutableIntStateOf(0) }
 
-    var executionResult by remember { mutableStateOf<SqlExecutionResult?>(null) }
+    var executionResult by remember { mutableStateOf<SqlExecutionResult?>(persistedExecutionResult) }
     var isExecuting by remember { mutableStateOf(false) }
     var resultViewMode by remember { mutableIntStateOf(0) } // 0: Tabla, 1: Gráfico
 
@@ -191,23 +196,35 @@ fun QueryScreen(
     }
 
     val initialSql = remember(activeDbName) {
-        getDefaultQueryForDatabase(activeDbName, tables.map { it.name })
+        persistedSqlQuery?.text?.takeIf { it.isNotBlank() }
+            ?: getDefaultQueryForDatabase(activeDbName, tables.map { it.name })
     }
     var sqlQuery by remember(activeDbName) {
         mutableStateOf(
-            TextFieldValue(
+            persistedSqlQuery ?: TextFieldValue(
                 text = initialSql,
                 selection = TextRange(initialSql.length)
             )
         )
     }
 
+    LaunchedEffect(persistedSqlQuery) {
+        if (persistedSqlQuery != null && persistedSqlQuery.text != sqlQuery.text) {
+            sqlQuery = persistedSqlQuery
+        }
+    }
+
+    fun updateSqlQuery(newValue: TextFieldValue) {
+        sqlQuery = newValue
+        onSqlQueryChange?.invoke(newValue)
+    }
+
     var lastDb by remember { mutableStateOf(activeDbName) }
     androidx.compose.runtime.LaunchedEffect(activeDbName) {
-        if (activeDbName != lastDb && initialSqlToLoad == null) {
+        if (activeDbName != lastDb && initialSqlToLoad == null && persistedSqlQuery == null) {
             lastDb = activeDbName
             val newSql = getDefaultQueryForDatabase(activeDbName, tables.map { it.name })
-            sqlQuery = TextFieldValue(newSql, TextRange(newSql.length))
+            updateSqlQuery(TextFieldValue(newSql, TextRange(newSql.length)))
         }
     }
 
@@ -233,7 +250,7 @@ fun QueryScreen(
                 val result = SqlScriptHelper.readSqlFromUri(context, uri)
                 isExecuting = false
                 result.onSuccess { loadedFile ->
-                    sqlQuery = TextFieldValue(loadedFile.rawSql, TextRange(0))
+                    updateSqlQuery(TextFieldValue(loadedFile.rawSql, TextRange(0)))
                     loadedSqlFileForInspection = loadedFile
                 }.onFailure { err ->
                     Toast.makeText(context, "Error al leer archivo SQL: ${err.message}", Toast.LENGTH_LONG).show()
@@ -247,7 +264,7 @@ fun QueryScreen(
             try {
                 val sampleFile = SqlScriptHelper.createSampleSqlFile(context)
                 val loadedFile = SqlScriptHelper.parseSqlContent(sampleFile.name, sampleFile.readText())
-                sqlQuery = TextFieldValue(loadedFile.rawSql, TextRange(0))
+                updateSqlQuery(TextFieldValue(loadedFile.rawSql, TextRange(0)))
                 loadedSqlFileForInspection = loadedFile
             } catch (e: Exception) {
                 Toast.makeText(context, "Error al generar demo: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -262,6 +279,7 @@ fun QueryScreen(
             val res = dbManager.executeSql(file.rawSql)
             isExecuting = false
             executionResult = res
+            onExecutionResultChange?.invoke(res)
             scrollToResultsTrigger++
             loadedSqlFileForInspection = null
             if (res.isSuccess) {
@@ -322,6 +340,7 @@ fun QueryScreen(
         scope.launch {
             val res = dbManager.executeSql(sqlQuery.text)
             executionResult = res
+            onExecutionResultChange?.invoke(res)
             isExecuting = false
             scrollToResultsTrigger++
 
@@ -348,7 +367,7 @@ fun QueryScreen(
     // Effect to handle externally selected query from side panel
     androidx.compose.runtime.LaunchedEffect(initialSqlToLoad, triggerExecute) {
         if (initialSqlToLoad != null) {
-            sqlQuery = TextFieldValue(initialSqlToLoad, TextRange(initialSqlToLoad.length))
+            updateSqlQuery(TextFieldValue(initialSqlToLoad, TextRange(initialSqlToLoad.length)))
             if (triggerExecute) {
                 executeCurrentSql()
             }
@@ -359,7 +378,7 @@ fun QueryScreen(
     // Quick action templates (Accurate for active database: Otorgamiento, Tienda, etc.)
     fun insertTemplate(type: String) {
         val snippet = getSnippetForDatabase(type, activeDbName, tables.map { it.name })
-        sqlQuery = TextFieldValue(snippet, TextRange(snippet.length))
+        updateSqlQuery(TextFieldValue(snippet, TextRange(snippet.length)))
     }
 
     Column(
@@ -436,7 +455,7 @@ fun QueryScreen(
         // Main SQL Editor Canvas
         SqlEditor(
             value = sqlQuery,
-            onValueChange = { sqlQuery = it },
+            onValueChange = { updateSqlQuery(it) },
             availableTables = tableNames,
             availableColumns = allColumns,
             tableSchemas = allTableSchemas,
@@ -497,7 +516,7 @@ fun QueryScreen(
                         .weight(1f)
                         .height(48.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .clickable { sqlQuery = TextFieldValue("", TextRange(0)) }
+                        .clickable { updateSqlQuery(TextFieldValue("", TextRange(0))) }
                         .testTag("clear_sql_button"),
                     color = MaterialTheme.colorScheme.surface,
                     shape = RoundedCornerShape(14.dp),
@@ -856,7 +875,7 @@ fun QueryScreen(
                     currentQuery = sqlQuery.text,
                     availableTables = tables.map { it.name },
                     onApplyFix = { fixedSql ->
-                        sqlQuery = TextFieldValue(fixedSql, TextRange(fixedSql.length))
+                        updateSqlQuery(TextFieldValue(fixedSql, TextRange(fixedSql.length)))
                         Toast.makeText(context, "Sugerencia aplicada al editor SQL", Toast.LENGTH_SHORT).show()
                     },
                     onOpenExamples = { category ->
@@ -1010,7 +1029,7 @@ fun QueryScreen(
         QueryHistoryDialog(
             history = queryRepo.getHistory(),
             onSelectQuery = { sql ->
-                sqlQuery = TextFieldValue(sql, TextRange(sql.length))
+                updateSqlQuery(TextFieldValue(sql, TextRange(sql.length)))
             },
             onClearHistory = { queryRepo.clearHistory() },
             onDismiss = { showHistoryDialog = false }
@@ -1022,7 +1041,7 @@ fun QueryScreen(
             savedQueries = queryRepo.getSavedQueries(),
             currentQuery = sqlQuery.text,
             onSelectQuery = { sql ->
-                sqlQuery = TextFieldValue(sql, TextRange(sql.length))
+                updateSqlQuery(TextFieldValue(sql, TextRange(sql.length)))
             },
             onSaveQuery = { title, desc ->
                 queryRepo.saveQuery(title, sqlQuery.text, desc)
@@ -1039,7 +1058,7 @@ fun QueryScreen(
             examples = queryRepo.getEducationalExamples(),
             initialCategory = examplesInitialCategory,
             onSelectExample = { sql ->
-                sqlQuery = TextFieldValue(sql, TextRange(sql.length))
+                updateSqlQuery(TextFieldValue(sql, TextRange(sql.length)))
             },
             onDismiss = {
                 showExamplesDialog = false
@@ -1173,7 +1192,10 @@ fun QueryScreen(
     }
 }
 
-private fun getDefaultQueryForDatabase(activeDb: String, tableNames: List<String>): String {
+fun getDefaultQueryForDatabase(activeDb: String, tableNames: List<String>): String {
+    val isSecretaria = activeDb.contains("secretaria", ignoreCase = true) ||
+            tableNames.contains("reasignaciones") ||
+            (tableNames.contains("grupos") && tableNames.contains("materias"))
     val isOtorgamiento = activeDb.contains("otorgamiento", ignoreCase = true) ||
             tableNames.contains("boletas_solicitud") ||
             (tableNames.contains("estudiantes") && tableNames.contains("carreras"))
@@ -1184,6 +1206,23 @@ private fun getDefaultQueryForDatabase(activeDb: String, tableNames: List<String
             activeDb.contains("tienda", ignoreCase = true)
 
     return when {
+        isSecretaria -> """
+            -- Historial de Reasignaciones de Alumnos entre Grupos y Motivos
+            SELECT 
+                r.fecha_tramite,
+                r.nombre_estudiante,
+                r.tipo_tramite,
+                g_ant.codigo_grupo AS grupo_origen,
+                g_nue.codigo_grupo AS grupo_destino,
+                r.motivo,
+                r.secretario_tramitador,
+                r.estado_dictamen
+            FROM reasignaciones r
+            LEFT JOIN grupos g_ant ON r.id_grupo_anterior = g_ant.id_grupo
+            LEFT JOIN grupos g_nue ON r.id_grupo_nuevo = g_nue.id_grupo
+            ORDER BY r.fecha_tramite DESC;
+        """.trimIndent()
+
         isOtorgamiento -> """
             -- Escalafón Oficial Provincial (50% Índice Académico + 50% Exámenes de Ingreso)
             SELECT 
