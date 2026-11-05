@@ -1175,6 +1175,25 @@ fun TablesScreen(
                                     }
 
                                     val hScroll = rememberScrollState()
+
+                                    // Adaptive column widths based on table content
+                                    val tableColumnWidths = remember(data.columns, data.rows) {
+                                        data.columns.indices.map { colIdx ->
+                                            val header = data.columns[colIdx]
+                                            val maxCellLen = data.rows.maxOfOrNull { it.getOrNull(colIdx)?.length ?: 0 } ?: 0
+                                            val maxLen = maxOf(header.length, maxCellLen)
+                                            when {
+                                                maxLen <= 4 -> 68.dp
+                                                maxLen <= 7 -> 90.dp
+                                                maxLen <= 12 -> 122.dp
+                                                maxLen <= 18 -> 165.dp
+                                                maxLen <= 26 -> 220.dp
+                                                maxLen <= 38 -> 280.dp
+                                                maxLen <= 50 -> 335.dp
+                                                else -> 380.dp
+                                            }
+                                        }
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
@@ -1219,12 +1238,13 @@ fun TablesScreen(
 
                                                 Text("#", modifier = Modifier.width(36.dp), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodySmall)
 
-                                                data.columns.forEach { col ->
+                                                data.columns.forEachIndexed { colIdx, col ->
+                                                    val colWidth = tableColumnWidths.getOrElse(colIdx) { 130.dp }
                                                     val colInfo = schema?.columns?.find { it.name.equals(col, ignoreCase = true) }
                                                     val isPk = colInfo?.isPrimaryKey == true
                                                     Row(
                                                         modifier = Modifier
-                                                            .width(130.dp)
+                                                            .width(colWidth)
                                                             .padding(horizontal = 4.dp),
                                                         verticalAlignment = Alignment.CenterVertically
                                                     ) {
@@ -1307,15 +1327,31 @@ fun TablesScreen(
                                                         }
 
                                                         Text("${idx + 1}", modifier = Modifier.width(36.dp), style = MaterialTheme.typography.bodySmall)
-                                                        row.forEach { valStr ->
-                                                            AutoResizeText(
-                                                                text = valStr,
-                                                                modifier = Modifier.width(130.dp).padding(horizontal = 4.dp),
-                                                                style = MaterialTheme.typography.bodySmall,
-                                                                maxLines = 2,
-                                                                minFontSize = 9.sp,
-                                                                targetFontSize = 12.sp
-                                                            )
+                                                        row.forEachIndexed { colIdx, valStr ->
+                                                            val colWidth = tableColumnWidths.getOrElse(colIdx) { 130.dp }
+                                                            val colName = data.columns.getOrElse(colIdx) { "Dato" }
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .width(colWidth)
+                                                                    .padding(horizontal = 4.dp)
+                                                                    .clickable {
+                                                                        if (valStr.length > 12) {
+                                                                            android.widget.Toast.makeText(
+                                                                                context,
+                                                                                "$colName:\n$valStr",
+                                                                                android.widget.Toast.LENGTH_SHORT
+                                                                            ).show()
+                                                                        }
+                                                                    }
+                                                            ) {
+                                                                AutoResizeText(
+                                                                    text = valStr,
+                                                                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 15.sp),
+                                                                    maxLines = 3,
+                                                                    minFontSize = 8.5.sp,
+                                                                    targetFontSize = 12.sp
+                                                                )
+                                                            }
                                                         }
                                                         // Row action buttons: Edit & Delete
                                                         Row(

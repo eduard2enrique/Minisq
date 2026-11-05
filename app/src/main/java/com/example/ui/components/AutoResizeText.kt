@@ -38,7 +38,7 @@ fun AutoResizeText(
     targetFontSize: TextUnit = if (style.fontSize.isSpecified) style.fontSize else 12.sp,
     step: TextUnit = 0.8.sp,
     overflow: TextOverflow = TextOverflow.Ellipsis,
-    softWrap: Boolean = true
+    softWrap: Boolean = maxLines > 1
 ) {
     var resizedFontSize by remember(text, targetFontSize) { mutableStateOf(targetFontSize) }
     var readyToDraw by remember(text, targetFontSize) { mutableStateOf(false) }

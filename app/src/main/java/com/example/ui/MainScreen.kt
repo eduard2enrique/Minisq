@@ -209,9 +209,8 @@ fun MainScreen(
         }
     ) {
         Scaffold(
-            modifier = Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.statusBars),
+            modifier = Modifier.fillMaxSize(),
+            contentWindowInsets = WindowInsets.statusBars,
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
                 // Footer matching screenshot with edge-to-edge background and navigation bar insets
@@ -359,7 +358,7 @@ fun MainScreen(
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = androidx.compose.ui.graphics.Color.White
                             ),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 9.dp, vertical = 2.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 7.dp, vertical = 2.dp),
                             modifier = Modifier
                                 .height(34.dp)
                                 .testTag("new_db_button")
@@ -369,13 +368,14 @@ fun MainScreen(
                                 contentDescription = null,
                                 modifier = Modifier.size(15.dp)
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
                             com.example.ui.components.AutoResizeText(
                                 text = "Nueva BD",
                                 targetFontSize = 11.5.sp,
-                                minFontSize = 9.sp,
+                                minFontSize = 8.sp,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 1
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }

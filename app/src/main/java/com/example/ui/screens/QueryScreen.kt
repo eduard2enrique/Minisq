@@ -746,7 +746,12 @@ fun QueryScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp)
+                        ) {
                             Icon(
                                 imageVector = if (result.isSuccess) Icons.Outlined.Assessment else Icons.Outlined.ErrorOutline,
                                 contentDescription = null,
@@ -755,10 +760,12 @@ fun QueryScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Visualización del Resultado",
+                                text = "Resultado",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             if (result.isSuccess && result.elapsedMs > 0) {
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -778,7 +785,7 @@ fun QueryScreen(
 
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
@@ -799,8 +806,10 @@ fun QueryScreen(
                                 Text(
                                     text = "Subir al editor",
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.primary
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }

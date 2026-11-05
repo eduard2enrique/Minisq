@@ -298,13 +298,13 @@ class QueryRepository(context: Context) {
                 title = "Evitar Error de INSERT Duplicado (INSERT OR IGNORE)",
                 category = "Solución de Errores",
                 description = "Omite la inserción si el ID o clave UNIQUE ya existe, evitando 'UNIQUE constraint failed'.",
-                sql = "-- Si el carnet ya existe, no lanza error y continúa\nINSERT OR IGNORE INTO estudiantes (\n    carnet_identidad, carnet_preuniversitario, nombre_completo, sexo,\n    via_ingreso, indice_academico, provincia, municipio, centro_estudio\n) VALUES (\n    '95010112345', '2026-001', 'Ana María López', 'F',\n    'Preuniversitario', 98.50, 'Holguín', 'Moa', 'IPU Antonio López Fernández'\n);"
+                sql = "-- Si el carnet ya existe, no lanza error y continúa\nINSERT OR IGNORE INTO estudiantes (\n    carnet_identidad, carnet_preuniversitario, nombre_completo, sexo,\n    via_ingreso, indice_academico, provincia, municipio, centro_estudio\n) VALUES (\n    '95010112345', '2026-001', 'Melisa María Fat Tamayo', 'F',\n    'Preuniversitario', 98.50, 'Holguín', 'Holguín', 'IPVCE José Martí Pérez'\n);"
             ),
             SqlExample(
                 title = "Actualizar Registro si ya Existe (INSERT OR REPLACE)",
                 category = "Solución de Errores",
                 description = "Actualiza los datos del registro si la clave primaria ya existía en la base.",
-                sql = "-- Si existe el id=1, sobreescribe sus datos (UPSERT)\nINSERT OR REPLACE INTO estudiantes (\n    id_estudiante, carnet_identidad, carnet_preuniversitario, nombre_completo, sexo,\n    via_ingreso, indice_academico, provincia, municipio, centro_estudio\n) VALUES (\n    1, '95010112345', '2026-001', 'Ana María López Actualizada', 'F',\n    'Preuniversitario', 99.00, 'Holguín', 'Moa', 'IPU Antonio López Fernández'\n);"
+                sql = "-- Si existe el id=1, sobreescribe sus datos (UPSERT)\nINSERT OR REPLACE INTO estudiantes (\n    id_estudiante, carnet_identidad, carnet_preuniversitario, nombre_completo, sexo,\n    via_ingreso, indice_academico, provincia, municipio, centro_estudio\n) VALUES (\n    1, '95010112345', '2026-001', 'Melisa María Fat Tamayo Actualizada', 'F',\n    'Preuniversitario', 99.00, 'Holguín', 'Holguín', 'IPVCE José Martí Pérez'\n);"
             ),
             SqlExample(
                 title = "Creación Segura de Tablas (CREATE TABLE IF NOT EXISTS)",

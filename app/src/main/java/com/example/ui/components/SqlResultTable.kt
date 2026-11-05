@@ -61,6 +61,7 @@ fun SqlResultTable(
     onOpenReport: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredRows by remember(result.rows, searchQuery) {
@@ -223,8 +224,27 @@ fun SqlResultTable(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Scrollable Grid
+            // Scrollable Grid with content-adaptive column widths
             val horizontalScrollState = rememberScrollState()
+
+            // Calculate optimal column width dynamically based on column name & cell contents
+            val columnWidths = remember(result.columns, result.rows) {
+                result.columns.indices.map { colIdx ->
+                    val header = result.columns[colIdx]
+                    val maxCellLen = result.rows.maxOfOrNull { it.getOrNull(colIdx)?.length ?: 0 } ?: 0
+                    val maxLen = maxOf(header.length, maxCellLen)
+                    when {
+                        maxLen <= 4 -> 68.dp
+                        maxLen <= 7 -> 90.dp
+                        maxLen <= 12 -> 122.dp
+                        maxLen <= 18 -> 165.dp
+                        maxLen <= 26 -> 220.dp
+                        maxLen <= 38 -> 280.dp
+                        maxLen <= 50 -> 335.dp
+                        else -> 380.dp
+                    }
+                }
+            }
 
             Box(
                 modifier = Modifier
@@ -256,17 +276,18 @@ fun SqlResultTable(
                                 .padding(horizontal = 4.dp)
                         )
 
-                        result.columns.forEach { colName ->
+                        result.columns.forEachIndexed { colIdx, colName ->
+                            val colWidth = columnWidths.getOrElse(colIdx) { 130.dp }
                             AutoResizeText(
                                 text = colName,
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
+                                maxLines = 2,
                                 minFontSize = 9.sp,
                                 targetFontSize = 12.sp,
                                 modifier = Modifier
-                                    .width(130.dp)
+                                    .width(colWidth)
                                     .padding(horizontal = 6.dp)
                             )
                         }
@@ -296,25 +317,41 @@ fun SqlResultTable(
                                         .padding(horizontal = 4.dp)
                                 )
 
-                                row.forEach { cellValue ->
+                                row.forEachIndexed { colIdx, cellValue ->
+                                    val colWidth = columnWidths.getOrElse(colIdx) { 130.dp }
                                     val isNull = cellValue == "NULL"
-                                    AutoResizeText(
-                                        text = cellValue,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontFamily = if (isNull) FontFamily.Monospace else FontFamily.Default
-                                        ),
-                                        color = if (isNull) {
-                                            MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurface
-                                        },
-                                        maxLines = 2,
-                                        minFontSize = 9.5.sp,
-                                        targetFontSize = 12.sp,
+                                    val colName = result.columns.getOrElse(colIdx) { "Dato" }
+
+                                    Box(
                                         modifier = Modifier
-                                            .width(130.dp)
+                                            .width(colWidth)
                                             .padding(horizontal = 6.dp)
-                                    )
+                                            .clickable {
+                                                if (cellValue.length > 12) {
+                                                    android.widget.Toast.makeText(
+                                                        context,
+                                                        "$colName:\n$cellValue",
+                                                        android.widget.Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                    ) {
+                                        AutoResizeText(
+                                            text = cellValue,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontFamily = if (isNull) FontFamily.Monospace else FontFamily.Default,
+                                                lineHeight = 15.sp
+                                            ),
+                                            color = if (isNull) {
+                                                MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurface
+                                            },
+                                            maxLines = 3,
+                                            minFontSize = 8.5.sp,
+                                            targetFontSize = 12.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -352,7 +389,7 @@ fun SqlResultTable(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         AutoResizeText(
-                            text = "↔ Deslizar datos",
+                            text = "↔ Deslizar columnas",
                             style = MaterialTheme.typography.labelSmall,
                             targetFontSize = 10.sp,
                             minFontSize = 8.5.sp,
