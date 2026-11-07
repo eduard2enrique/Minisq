@@ -64,11 +64,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.IssueSeverity
@@ -220,8 +223,30 @@ fun SqlEditor(
             updateValueWithHistory(TextFieldValue(newText, TextRange(newCursor)))
             return
         }
+        if (kw == "()") {
+            val prefixSpace = if (cur > 0 && !raw[cur - 1].isWhitespace() && raw[cur - 1] != '(' && raw[cur - 1] != ',') " " else ""
+            val snippet = "$prefixSpace()"
+            val newText = raw.substring(0, cur) + snippet + raw.substring(cur)
+            val newCursor = (cur + snippet.length - 1).coerceIn(0, newText.length)
+            updateValueWithHistory(TextFieldValue(newText, TextRange(newCursor)))
+            return
+        }
+        if (kw == ",") {
+            val snippet = ", "
+            val newText = raw.substring(0, cur) + snippet + raw.substring(cur)
+            val newCursor = (cur + snippet.length).coerceIn(0, newText.length)
+            updateValueWithHistory(TextFieldValue(newText, TextRange(newCursor)))
+            return
+        }
+        if (kw == ";") {
+            val snippet = ";"
+            val newText = raw.substring(0, cur) + snippet + raw.substring(cur)
+            val newCursor = (cur + snippet.length).coerceIn(0, newText.length)
+            updateValueWithHistory(TextFieldValue(newText, TextRange(newCursor)))
+            return
+        }
         val prefixSpace = if (cur > 0 && !raw[cur - 1].isWhitespace() && raw[cur - 1] != '(' && raw[cur - 1] != ',') " " else ""
-        val suffixSpace = if (kw == ";" || kw == "*") "" else " "
+        val suffixSpace = if (kw == ";") "" else " "
         val snippet = "$prefixSpace$kw$suffixSpace"
         val newText = raw.substring(0, cur) + snippet + raw.substring(cur)
         val newCursor = cur + snippet.length
@@ -527,14 +552,54 @@ fun SqlEditor(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val quickKeywords = listOf(
-                        "SELECT", "*", "FROM", "WHERE", "''", "=", "LIKE", "AND", "OR", "JOIN", "ON",
-                        "ORDER BY", "GROUP BY", "LIMIT", "INSERT INTO", "UPDATE", "DELETE FROM", ";"
+                        // Operadores de comparación
+                        "=", "!=", "<", ">", "<=", ">=", "<>",
+                        // Operadores de búsqueda y pertenencia
+                        "LIKE", "IN", "BETWEEN",
+                        // Operadores lógicos
+                        "AND", "OR", "NOT",
+                        // Operadores aritméticos y concatenación
+                        "+", "-", "*", "/", "%", "||",
+                        // Delimitadores y caracteres rápidos
+                        "''", "()", ",", ";",
+                        // Cláusulas SQL principales
+                        "SELECT", "FROM", "WHERE", "JOIN", "ON", "ORDER BY", "GROUP BY", "LIMIT", "INSERT INTO", "UPDATE", "DELETE FROM"
                     )
+
+                    val compOperators = setOf("=", "!=", "<", ">", "<=", ">=", "<>", "||", "+", "-", "/", "%")
+                    val logicalOps = setOf("AND", "OR", "NOT", "LIKE", "IN", "BETWEEN")
+                    val delimiters = setOf("''", "()", ",", ";")
+
                     quickKeywords.forEach { kw ->
+                        val isComp = kw in compOperators
+                        val isLogical = kw in logicalOps
+                        val isDelimiter = kw in delimiters
+
+                        val chipBg = when {
+                            isComp -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+                            isLogical -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                            isDelimiter -> MaterialTheme.colorScheme.surfaceVariant
+                            else -> MaterialTheme.colorScheme.surface
+                        }
+
+                        val chipTextColor = when {
+                            isComp -> MaterialTheme.colorScheme.tertiary
+                            isLogical -> MaterialTheme.colorScheme.primary
+                            isDelimiter -> MaterialTheme.colorScheme.secondary
+                            kw == ";" -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.primary
+                        }
+
+                        val chipBorder = when {
+                            isComp -> BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f))
+                            isLogical -> BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                            else -> BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                        }
+
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                            color = chipBg,
+                            border = chipBorder,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { insertQuickKeyword(kw) }
@@ -544,11 +609,11 @@ fun SqlEditor(
                                 text = kw,
                                 style = TextStyle(
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (kw == "*" || kw == ";") MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isComp || isLogical) FontWeight.ExtraBold else FontWeight.Bold,
+                                    color = chipTextColor
                                 ),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                modifier = Modifier.padding(horizontal = 8.5.dp, vertical = 4.dp)
                             )
                         }
                     }
@@ -774,37 +839,138 @@ fun SqlSyntaxLegendDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                // Interactive code preview box
+                // Interactive code preview box with perfectly structured SQL layout
+                val exampleSql = remember(isDark) {
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(color = colorComment, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)) {
+                            append("-- Consulta de ejemplo con esquema activo:\n")
+                        }
+                        withStyle(SpanStyle(color = colorClause, fontWeight = FontWeight.Bold)) {
+                            append("SELECT\n")
+                        }
+                        append("    ")
+                        withStyle(SpanStyle(color = colorColumn, fontWeight = FontWeight.SemiBold)) {
+                            append("ciudad")
+                        }
+                        append(",\n    ")
+                        withStyle(SpanStyle(color = colorFunction, fontWeight = FontWeight.Bold)) {
+                            append("COUNT")
+                        }
+                        append("(")
+                        withStyle(SpanStyle(color = colorOperator)) {
+                            append("*")
+                        }
+                        append(") ")
+                        withStyle(SpanStyle(color = colorClause, fontWeight = FontWeight.Bold)) {
+                            append("AS ")
+                        }
+                        withStyle(SpanStyle(color = colorColumn, fontWeight = FontWeight.SemiBold)) {
+                            append("total_alumnos")
+                        }
+                        append(",\n    ")
+                        withStyle(SpanStyle(color = colorFunction, fontWeight = FontWeight.Bold)) {
+                            append("ROUND")
+                        }
+                        append("(")
+                        withStyle(SpanStyle(color = colorFunction, fontWeight = FontWeight.Bold)) {
+                            append("AVG")
+                        }
+                        append("(")
+                        withStyle(SpanStyle(color = colorColumn, fontWeight = FontWeight.SemiBold)) {
+                            append("indice_academico")
+                        }
+                        append("), ")
+                        withStyle(SpanStyle(color = colorNumber, fontWeight = FontWeight.SemiBold)) {
+                            append("2")
+                        }
+                        append(") ")
+                        withStyle(SpanStyle(color = colorClause, fontWeight = FontWeight.Bold)) {
+                            append("AS ")
+                        }
+                        withStyle(SpanStyle(color = colorColumn, fontWeight = FontWeight.SemiBold)) {
+                            append("promedio\n")
+                        }
+                        withStyle(SpanStyle(color = colorClause, fontWeight = FontWeight.Bold)) {
+                            append("FROM ")
+                        }
+                        withStyle(SpanStyle(color = colorTable, fontWeight = FontWeight.Bold)) {
+                            append("estudiantes\n")
+                        }
+                        withStyle(SpanStyle(color = colorClause, fontWeight = FontWeight.Bold)) {
+                            append("WHERE ")
+                        }
+                        withStyle(SpanStyle(color = colorColumn, fontWeight = FontWeight.SemiBold)) {
+                            append("indice_academico ")
+                        }
+                        withStyle(SpanStyle(color = colorOperator, fontWeight = FontWeight.Bold)) {
+                            append(">= ")
+                        }
+                        withStyle(SpanStyle(color = colorNumber, fontWeight = FontWeight.SemiBold)) {
+                            append("90.00\n")
+                        }
+                        append("  ")
+                        withStyle(SpanStyle(color = colorClause, fontWeight = FontWeight.Bold)) {
+                            append("AND ")
+                        }
+                        withStyle(SpanStyle(color = colorColumn, fontWeight = FontWeight.SemiBold)) {
+                            append("provincia ")
+                        }
+                        withStyle(SpanStyle(color = colorOperator, fontWeight = FontWeight.Bold)) {
+                            append("= ")
+                        }
+                        withStyle(SpanStyle(color = colorString, fontWeight = FontWeight.Medium)) {
+                            append("'Holguín'\n")
+                        }
+                        withStyle(SpanStyle(color = colorClause, fontWeight = FontWeight.Bold)) {
+                            append("ORDER BY ")
+                        }
+                        withStyle(SpanStyle(color = colorColumn, fontWeight = FontWeight.SemiBold)) {
+                            append("promedio ")
+                        }
+                        withStyle(SpanStyle(color = colorClause, fontWeight = FontWeight.Bold)) {
+                            append("DESC")
+                        }
+                        withStyle(SpanStyle(color = colorOperator)) {
+                            append(";")
+                        }
+                    }
+                }
+
                 Surface(
                     color = if (isDark) DarkEditorBackground else MaterialTheme.colorScheme.surfaceVariant,
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, if (isDark) DarkSurfaceBorder else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                 ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = "-- Consulta con resaltado sintáctico y de esquema:",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
-                            color = colorComment,
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                        )
-                        Row {
-                            Text("SELECT ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorClause)
-                            Text("ciudad, ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colorColumn)
-                            Text("COUNT", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorFunction)
-                            Text("(*), ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                            Text("AVG", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorFunction)
-                            Text("(", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                            Text("saldo", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colorColumn)
-                            Text(") ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        ) {
+                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFEF4444)))
+                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFF59E0B)))
+                            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF10B981)))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "consulta_ejemplo.sql",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                fontWeight = FontWeight.Medium
+                            )
                         }
-                        Row {
-                            Text("FROM ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorClause)
-                            Text("clientes ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorTable)
-                            Text("WHERE ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = colorClause)
-                            Text("saldo ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colorColumn)
-                            Text("> ", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = colorOperator)
-                            Text("100.50;", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colorNumber)
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                        ) {
+                            Text(
+                                text = exampleSql,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.5.sp,
+                                lineHeight = 17.sp
+                            )
                         }
                     }
                 }
