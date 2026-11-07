@@ -511,7 +511,7 @@ fun TableEntityCard(
 ) {
     Card(
         modifier = Modifier
-            .width(280.dp)
+            .width(320.dp)
             .shadow(6.dp, RoundedCornerShape(12.dp))
             .clickable(enabled = onSelectTable != null) {
                 onSelectTable?.invoke(schema.tableName)
@@ -533,7 +533,7 @@ fun TableEntityCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f, fill = false).padding(end = 4.dp)
+                    modifier = Modifier.weight(1f, fill = false).padding(end = 6.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.TableChart,
@@ -569,86 +569,142 @@ fun TableEntityCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 schema.columns.forEach { col ->
-                    val isFk = schema.foreignKeys.any { it.fromColumn.equals(col.name, ignoreCase = true) }
+                    val fk = schema.foreignKeys.firstOrNull { it.fromColumn.equals(col.name, ignoreCase = true) }
+                    val isFk = fk != null
 
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(
                                 if (col.isPrimaryKey) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                                else if (isFk) MaterialTheme.colorScheme.secondary.copy(alpha = 0.06f)
                                 else Color.Transparent,
                                 RoundedCornerShape(4.dp)
                             )
-                            .padding(horizontal = 6.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
                     ) {
                         Row(
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f, fill = false).padding(end = 6.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            if (col.isPrimaryKey) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Key,
-                                    contentDescription = "Primary Key",
-                                    tint = SqlWarning,
-                                    modifier = Modifier.size(13.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f, fill = false).padding(end = 4.dp)
+                            ) {
+                                if (col.isPrimaryKey) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Key,
+                                        contentDescription = "Primary Key",
+                                        tint = SqlWarning,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                } else if (isFk) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Link,
+                                        contentDescription = "Foreign Key",
+                                        tint = SqlCyan,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                } else {
+                                    Spacer(modifier = Modifier.width(17.dp))
+                                }
+
+                                Text(
+                                    text = col.name,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                    fontWeight = if (col.isPrimaryKey) FontWeight.Bold else FontWeight.Normal,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
-                            } else if (isFk) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Link,
-                                    contentDescription = "Foreign Key",
-                                    tint = SqlCyan,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                            } else {
-                                Spacer(modifier = Modifier.width(17.dp))
                             }
 
-                            Text(
-                                text = col.name,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = if (col.isPrimaryKey) FontWeight.Bold else FontWeight.Normal,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (isFk) {
+                                    Surface(
+                                        shape = RoundedCornerShape(3.dp),
+                                        color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.18f)
+                                    ) {
+                                        Text(
+                                            text = "FK",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.secondary,
+                                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = col.type.ifBlank { "ANY" },
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
 
-                        Text(
-                            text = col.type.ifBlank { "ANY" },
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        // Inline reference info if FK to make long column FK relationships explicit and never truncated
+                        if (fk != null) {
+                            Text(
+                                text = "↳ referencia: ${fk.targetTable}(${fk.toColumn})",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
+                                    fontFamily = FontFamily.Monospace
+                                ),
+                                color = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.padding(start = 17.dp, top = 1.dp),
+                                softWrap = true
+                            )
+                        }
                     }
                 }
             }
 
             // Foreign Key Footer Summary if present
             if (schema.foreignKeys.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = "Claves Foráneas (${schema.foreignKeys.size})",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         schema.foreignKeys.forEach { fk ->
-                            Text(
-                                text = "🔗 ${fk.fromColumn} ➔ ${fk.targetTable}(🔑 ${fk.toColumn})",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                color = MaterialTheme.colorScheme.secondary,
-                                softWrap = true
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "🔗 ${fk.fromColumn} ➔ ${fk.targetTable} (${fk.toColumn})",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    ),
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    softWrap = true
+                                )
+                            }
                         }
                     }
                 }

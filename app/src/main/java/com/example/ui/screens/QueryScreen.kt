@@ -1412,6 +1412,8 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
             activeDb.contains("tienda", ignoreCase = true)
     val isSecretaria = activeDb.contains("secretaria", ignoreCase = true) ||
             tableNames.contains("grupos") || tableNames.contains("reasignaciones")
+    val isClinica = activeDb.contains("clinica", ignoreCase = true) ||
+            (tableNames.contains("citas") && tableNames.contains("medicos"))
     val firstTable = tableNames.firstOrNull() ?: "nueva_tabla"
 
     return when (type) {
@@ -1426,6 +1428,11 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
         """.trimIndent()
 
         "insert" -> when {
+            isClinica -> """
+                INSERT INTO citas (paciente_id, medico_id, fecha, motivo, costo)
+                VALUES (1, 2, '2026-11-25', 'Consulta de valoración pediátrica', 65.0);
+            """.trimIndent()
+
             isSecretaria -> """
                 INSERT INTO estudiantes_matricula (
                     numero_expediente,
@@ -1489,6 +1496,12 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
         }
 
         "select" -> when {
+            isClinica -> """
+                SELECT id, paciente_id, medico_id, fecha, motivo, costo
+                FROM citas
+                ORDER BY fecha DESC;
+            """.trimIndent()
+
             isSecretaria -> """
                 SELECT id_estudiante, numero_expediente, nombre_completo, sexo, id_grupo, promedio_ingreso, estado_matricula
                 FROM estudiantes_matricula
@@ -1538,6 +1551,23 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
         }
 
         "join" -> when {
+            isClinica -> """
+                -- Citas Médicas con datos completos de Pacientes y Especialistas
+                SELECT
+                    c.id AS cita_id,
+                    p.nombre AS paciente,
+                    p.edad,
+                    m.nombre AS medico,
+                    m.especialidad,
+                    c.fecha,
+                    c.motivo,
+                    c.costo
+                FROM citas c
+                INNER JOIN pacientes p ON c.paciente_id = p.id
+                INNER JOIN medicos m ON c.medico_id = m.id
+                ORDER BY c.fecha DESC;
+            """.trimIndent()
+
             isSecretaria -> """
                 -- Estudiantes con su Grupo Oficial, Aula y Profesor Tutor
                 SELECT
@@ -1614,6 +1644,19 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
         }
 
         "group" -> when {
+            isClinica -> """
+                -- Recaudación y Volumen de Citas por Especialidad Médica
+                SELECT
+                    m.especialidad,
+                    COUNT(c.id) AS total_citas,
+                    ROUND(SUM(c.costo), 2) AS recaudacion_total,
+                    ROUND(AVG(c.costo), 2) AS costo_promedio
+                FROM medicos m
+                LEFT JOIN citas c ON m.id = c.medico_id
+                GROUP BY m.id, m.especialidad
+                ORDER BY total_citas DESC, recaudacion_total DESC;
+            """.trimIndent()
+
             isSecretaria -> """
                 -- Matrícula y Promedio por Grupo Escolar
                 SELECT

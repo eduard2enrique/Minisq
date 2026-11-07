@@ -337,7 +337,7 @@ fun MainScreen(
                                     border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
                                 ) {
                                     Text(
-                                        text = "v1.2",
+                                        text = "v1.3",
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary,

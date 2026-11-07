@@ -81,6 +81,17 @@ class DatabaseManager(private val context: Context) {
                 .putInt("secretaria_db_ver", TARGET_SECRETARIA_VER)
                 .apply()
         }
+        val clinicaFile = File(dbDir, "clinica_salud.db")
+        val currentClinicaVer = prefs.getInt("clinica_db_ver", 0)
+        val TARGET_CLINICA_VER = 2
+        if (clinicaFile.exists() && currentClinicaVer < TARGET_CLINICA_VER) {
+            clinicaFile.delete()
+            createSampleClinic(clinicaFile)
+            prefs.edit()
+                .putString("template_clinica_salud.db", "clinic")
+                .putInt("clinica_db_ver", TARGET_CLINICA_VER)
+                .apply()
+        }
     }
 
     @Synchronized
@@ -1312,9 +1323,14 @@ class DatabaseManager(private val context: Context) {
                 );
             """.trimIndent())
 
-            db.execSQL("INSERT OR IGNORE INTO medicos (nombre, especialidad, telefono) VALUES ('Dr. Roberto Blanco', 'Cardiología', '+34 600 123 456'), ('Dra. Laura Díaz', 'Pediatría', '+34 600 987 654');")
-            db.execSQL("INSERT OR IGNORE INTO pacientes (nombre, edad, ciudad, grupo_sanguineo) VALUES ('Marta Silva', 34, 'Madrid', 'O+'), ('Pedro Morales', 62, 'Barcelona', 'A+'), ('Elena Rios', 19, 'Valencia', 'B-');")
-            db.execSQL("INSERT OR IGNORE INTO citas (paciente_id, medico_id, fecha, motivo, costo) VALUES (1, 1, '2026-10-28', 'Chequeo preventivo', 75.0), (2, 1, 'Seguimiento presión arterial', 60.0), (3, 2, 'Consulta general', 50.0);")
+            db.execSQL("""
+                INSERT OR IGNORE INTO citas (paciente_id, medico_id, fecha, motivo, costo) VALUES 
+                (1, 1, '2026-10-28', 'Chequeo preventivo de rutina', 75.0),
+                (2, 1, '2026-11-02', 'Seguimiento presión arterial y arritmia', 60.0),
+                (3, 2, '2026-11-05', 'Consulta pediátrica general y vacunas', 50.0),
+                (1, 2, '2026-11-12', 'Evaluación preventiva infantil', 55.0),
+                (2, 1, '2026-11-20', 'Electrocardiograma de control', 85.0);
+            """.trimIndent())
         } finally {
             db.close()
         }
