@@ -235,11 +235,13 @@ fun ProjectsHubDialog(
         }
     }
 
-    // Load table summary for current active database immediately
-    LaunchedEffect(currentDb) {
-        if (!expandedTablesMap.containsKey(currentDb)) {
-            val summaries = dbManager.getDatabaseTableSummaries(currentDb)
-            expandedTablesMap[currentDb] = summaries
+    // Preload table summaries for all databases immediately so counts and rows are shown without needing to tap
+    LaunchedEffect(databases) {
+        databases.forEach { dbName ->
+            if (!expandedTablesMap.containsKey(dbName)) {
+                val summaries = dbManager.getDatabaseTableSummaries(dbName)
+                expandedTablesMap[dbName] = summaries
+            }
         }
     }
 

@@ -619,6 +619,7 @@ fun SavedQueriesDialog(
 fun SqlExamplesDialog(
     examples: List<SqlExample>,
     initialCategory: String = "Todas",
+    onCategoryChanged: ((String) -> Unit)? = null,
     onSelectExample: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -723,7 +724,10 @@ fun SqlExamplesDialog(
                     categories.forEach { cat ->
                         FilterChip(
                             selected = selectedCategory == cat,
-                            onClick = { selectedCategory = cat },
+                            onClick = {
+                                selectedCategory = cat
+                                onCategoryChanged?.invoke(cat)
+                            },
                             label = {
                                 Text(
                                     text = cat,

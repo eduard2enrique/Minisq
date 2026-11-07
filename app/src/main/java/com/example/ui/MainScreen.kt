@@ -280,11 +280,13 @@ fun MainScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
+                Spacer(modifier = Modifier.height(4.dp))
+
                 // 1. Top Header Bar (iOS / AI Studio Minimalist Nav)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -300,7 +302,7 @@ fun MainScreen(
                         // MiniSQL App Badge in smooth iOS squircle
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(32.dp)
                                 .clip(RoundedCornerShape(9.dp))
                                 .background(SqlBlue),
                             contentAlignment = Alignment.Center
@@ -313,78 +315,114 @@ fun MainScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(7.dp))
 
-                        Column {
-                            Text(
-                                text = "MiniSQL Pro 1.1",
-                                style = MaterialTheme.typography.titleMedium.copy(fontSize = 16.sp),
-                                fontWeight = FontWeight.ExtraBold,
-                                color = MaterialTheme.colorScheme.onBackground,
-                                maxLines = 1
-                            )
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Text(
+                                    text = "MiniSQL Pro",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                )
+                                // Version badge
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                    border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                                ) {
+                                    Text(
+                                        text = "v1.2",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
                             Text(
                                 text = "SQLite Studio",
-                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
                                 color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }
                     }
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // Lateral History Drawer Toggle Button
-                        IconButton(
-                            onClick = {
-                                scope.launch {
-                                    if (drawerState.isClosed) drawerState.open() else drawerState.close()
-                                }
-                            },
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
                             modifier = Modifier
                                 .size(36.dp)
-                                .testTag("top_history_drawer_btn")
-                        ) {
-                            BadgedBox(
-                                badge = {
-                                    if (historyList.isNotEmpty()) {
-                                        Badge(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        ) {
-                                            Text("${historyList.size.coerceAtMost(20)}")
-                                        }
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    scope.launch {
+                                        if (drawerState.isClosed) drawerState.open() else drawerState.close()
                                     }
                                 }
-                            ) {
+                                .testTag("top_history_drawer_btn")
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                BadgedBox(
+                                    badge = {
+                                        if (historyList.isNotEmpty()) {
+                                            Badge(
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                            ) {
+                                                Text("${historyList.size.coerceAtMost(20)}")
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.History,
+                                        contentDescription = "Panel lateral de historial",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Day / Night Theme Toggle Button (Clearly visible, never covered)
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { onToggleTheme() }
+                                .testTag("theme_toggle_btn")
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Icon(
-                                    imageVector = Icons.Outlined.History,
-                                    contentDescription = "Panel lateral de historial",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
+                                    imageVector = if (isDarkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
+                                    contentDescription = if (isDarkTheme) "Cambiar a modo claro" else "Cambiar a modo oscuro",
+                                    tint = if (isDarkTheme) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(19.dp)
                                 )
                             }
                         }
 
-                        IconButton(
-                            onClick = onToggleTheme,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .testTag("theme_toggle_btn")
-                        ) {
-                            Icon(
-                                imageVector = if (isDarkTheme) Icons.Outlined.LightMode else Icons.Outlined.DarkMode,
-                                contentDescription = "Cambiar tema",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-
+                        // New DB button
                         Button(
                             onClick = { showNewDbDialog = true },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.primary,
                                 contentColor = androidx.compose.ui.graphics.Color.White
@@ -397,12 +435,12 @@ fun MainScreen(
                             Icon(
                                 imageVector = Icons.Outlined.Add,
                                 contentDescription = null,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(3.dp))
                             com.example.ui.components.AutoResizeText(
                                 text = "Nueva BD",
-                                targetFontSize = 11.5.sp,
+                                targetFontSize = 11.sp,
                                 minFontSize = 8.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,

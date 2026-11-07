@@ -335,45 +335,140 @@ class QueryRepository(context: Context) {
                 category = "Solución de Errores",
                 description = "Inserta primero el registro padre antes de referenciar su ID en una tabla hija.",
                 sql = "-- 1. Comprobar que la carrera existe en la tabla padre 'carreras':\nSELECT id_carrera, nombre_carrera FROM carreras WHERE id_carrera = 6;\n\n-- 2. Ahora sí podemos insertar la solicitud en la tabla hija 'boletas_solicitud':\nINSERT INTO boletas_solicitud (id_estudiante, id_carrera, orden_prioridad)\nVALUES (1, 6, 1);"
-            ),
-
-            // Sección: Secretaría Escolar (Historial y Reasignaciones)
-            SqlExample(
-                title = "Secretaría: Grupos, Aulas y Capacidad (Básica)",
-                category = "Secretaría Escolar (Historial y Reasignaciones)",
-                description = "Lista todos los grupos escolares con su grado, especialidad, aula asignada y profesor tutor.",
-                sql = "SELECT codigo_grupo, grado, especialidad, aula, profesor_tutor, capacidad_maxima\nFROM grupos\nORDER BY grado ASC, codigo_grupo ASC;"
-            ),
-            SqlExample(
-                title = "Secretaría: Materias por Departamento (Básica)",
-                category = "Secretaría Escolar (Historial y Reasignaciones)",
-                description = "Plan docente escolar con horas semanales y profesores titulares por departamento.",
-                sql = "SELECT codigo_materia, nombre_materia, departamento, horas_semanales, profesor_titular\nFROM materias\nORDER BY departamento, horas_semanales DESC;"
-            ),
-            SqlExample(
-                title = "Secretaría: Historial de Reasignaciones (Intermedia - JOIN Doble)",
-                category = "Secretaría Escolar (Historial y Reasignaciones)",
-                description = "Trazabilidad de movimientos: qué estudiante se reasignó, de qué grupo a qué grupo, fecha y motivo.",
-                sql = "SELECT \n    r.fecha_tramite,\n    r.nombre_estudiante,\n    r.tipo_tramite,\n    g_ant.codigo_grupo AS grupo_origen,\n    g_nue.codigo_grupo AS grupo_destino,\n    r.motivo,\n    r.secretario_tramitador\nFROM reasignaciones r\nLEFT JOIN grupos g_ant ON r.id_grupo_anterior = g_ant.id_grupo\nLEFT JOIN grupos g_nue ON r.id_grupo_nuevo = g_nue.id_grupo\nORDER BY r.fecha_tramite DESC;"
-            ),
-            SqlExample(
-                title = "Secretaría: Matrícula Actual vs Plazas Libres (Intermedia - COUNT)",
-                category = "Secretaría Escolar (Historial y Reasignaciones)",
-                description = "Compara la capacidad máxima de cada aula contra los estudiantes activos matriculados.",
-                sql = "SELECT \n    g.codigo_grupo,\n    g.aula,\n    g.capacidad_maxima,\n    COUNT(e.id_estudiante) AS matricula_actual,\n    (g.capacidad_maxima - COUNT(e.id_estudiante)) AS plazas_libres\nFROM grupos g\nLEFT JOIN estudiantes_matricula e ON g.id_grupo = e.id_grupo AND e.estado_matricula = 'Activo'\nGROUP BY g.id_grupo\nORDER BY g.grado, g.codigo_grupo;"
-            ),
-            SqlExample(
-                title = "Secretaría: Balance de Movimientos por Grupo (Avanzada - Auditoría)",
-                category = "Secretaría Escolar (Historial y Reasignaciones)",
-                description = "Auditoría de secretaría: calcula salidas, entradas y balance neto de reasignaciones por grupo.",
-                sql = "SELECT \n    g.codigo_grupo,\n    g.profesor_tutor,\n    SUM(CASE WHEN r.id_grupo_anterior = g.id_grupo THEN 1 ELSE 0 END) AS total_salidas,\n    SUM(CASE WHEN r.id_grupo_nuevo = g.id_grupo THEN 1 ELSE 0 END) AS total_entradas,\n    (SUM(CASE WHEN r.id_grupo_nuevo = g.id_grupo THEN 1 ELSE 0 END) - \n     SUM(CASE WHEN r.id_grupo_anterior = g.id_grupo THEN 1 ELSE 0 END)) AS balance_neto\nFROM grupos g\nLEFT JOIN reasignaciones r ON g.id_grupo IN (r.id_grupo_anterior, r.id_grupo_nuevo)\nGROUP BY g.id_grupo\nORDER BY balance_neto DESC;"
-            ),
-            SqlExample(
-                title = "Secretaría: Auditoría de Trámites por Tipo (Avanzada - Agregación)",
-                category = "Secretaría Escolar (Historial y Reasignaciones)",
-                description = "Resumen gerencial de trámites de secretaría con porcentajes y motivos registrados.",
-                sql = "SELECT \n    tipo_tramite,\n    COUNT(*) AS total_tramites,\n    ROUND(COUNT(*) * 100.0 / (SELECT COUNT(*) FROM reasignaciones), 1) AS porcentaje,\n    GROUP_CONCAT(DISTINCT motivo) AS motivos_resumidos\nFROM reasignaciones\nGROUP BY tipo_tramite\nORDER BY total_tramites DESC;"
             )
         )
+    }
+
+    fun getEducationalExamplesForDb(dbName: String): List<SqlExample> {
+        val lower = dbName.lowercase()
+        return when {
+            lower.contains("secretaria") -> listOf(
+                SqlExample(
+                    title = "1. Exploración de Grupos Escolares",
+                    category = "Modo Aula: Exploración Básica",
+                    description = "Ver los grupos de 10mo, 11no y 12mo grado, aulas y profesores tutores.",
+                    sql = "SELECT id_grupo, codigo_grupo, grado, especialidad, aula, profesor_tutor, turno\nFROM grupos\nORDER BY grado ASC, codigo_grupo ASC;"
+                ),
+                SqlExample(
+                    title = "2. Claustro Docente y Materias",
+                    category = "Modo Aula: Exploración Básica",
+                    description = "Listado de materias escolares, departamentos y profesores titulares.",
+                    sql = "SELECT codigo_materia, nombre_materia, departamento, horas_semanales, profesor_titular\nFROM materias\nORDER BY departamento, nombre_materia;"
+                ),
+                SqlExample(
+                    title = "3. Estudiantes y Matrícula Activa",
+                    category = "Modo Aula: Exploración Básica",
+                    description = "Alumnos registrados, expediente oficial, grupo asignado y promedio de ingreso.",
+                    sql = "SELECT numero_expediente, nombre_completo, sexo, id_grupo, promedio_ingreso, estado_matricula\nFROM estudiantes_matricula\nWHERE estado_matricula = 'Activo'\nORDER BY promedio_ingreso DESC;"
+                ),
+                SqlExample(
+                    title = "4. Historial de Reasignaciones y Trámites",
+                    category = "Modo Aula: Historial y Trámites",
+                    description = "Registro de cambios de grupo, permutas, nivelaciones y dictámenes de secretaría.",
+                    sql = "SELECT fecha_tramite, tipo_tramite, nombre_estudiante, motivo, secretario_tramitador, estado_dictamen\nFROM reasignaciones\nORDER BY fecha_tramite DESC;"
+                ),
+                SqlExample(
+                    title = "Solución de Error: IF NOT EXISTS",
+                    category = "Solución de Errores",
+                    description = "Evita error al crear tablas en clases si ya existían.",
+                    sql = "CREATE TABLE IF NOT EXISTS asistencias (\n    id_asistencia INTEGER PRIMARY KEY AUTOINCREMENT,\n    id_estudiante INTEGER,\n    fecha TEXT NOT NULL,\n    asistio INTEGER CHECK (asistio IN (0, 1)),\n    FOREIGN KEY (id_estudiante) REFERENCES estudiantes_matricula(id_estudiante)\n);"
+                )
+            )
+
+            lower.contains("cuba") -> listOf(
+                SqlExample(
+                    title = "1. Provincias por Población (ORDER BY)",
+                    category = "Geografía Básica",
+                    description = "Ranking de provincias cubanas ordenadas de mayor a menor población.",
+                    sql = "SELECT nombre, capital, region, poblacion\nFROM provincias\nORDER BY poblacion DESC;"
+                ),
+                SqlExample(
+                    title = "2. Municipios de la Provincia de Holguín",
+                    category = "Geografía Básica",
+                    description = "Filtro de municipios correspondientes a la provincia de Holguín.",
+                    sql = "SELECT m.nombre AS Municipio, p.nombre AS Provincia, p.region\nFROM municipios m\nJOIN provincias p ON m.provincia_id = p.id\nWHERE p.nombre = 'Holguín'\nORDER BY m.nombre ASC;"
+                ),
+                SqlExample(
+                    title = "3. Conteo de Municipios por Provincia (GROUP BY)",
+                    category = "Agrupaciones y Resumen",
+                    description = "Cantidad total de municipios en cada provincia de Cuba.",
+                    sql = "SELECT p.nombre AS Provincia, COUNT(m.id) AS Cantidad_Municipios\nFROM provincias p\nLEFT JOIN municipios m ON p.id = m.provincia_id\nGROUP BY p.id, p.nombre\nORDER BY Cantidad_Municipios DESC;"
+                ),
+                SqlExample(
+                    title = "4. Lugares de Interés Histórico y Natural (LIKE)",
+                    category = "Filtros y Búsqueda",
+                    description = "Sitios patrimoniales y parques naturales destacados.",
+                    sql = "SELECT nombre, tipo, descripcion\nFROM lugares_interes\nWHERE tipo IN ('Natural', 'Histórico')\nORDER BY tipo, nombre;"
+                ),
+                SqlExample(
+                    title = "Evitar Duplicados con INSERT OR IGNORE",
+                    category = "Solución de Errores",
+                    description = "Inserta un lugar de interés sin fallar si ya existía su clave única.",
+                    sql = "INSERT OR IGNORE INTO lugares_interes (nombre, provincia_id, tipo, descripcion)\nVALUES ('Salto del Guayabo', 10, 'Natural', 'Una de las mayores cascadas de Cuba en Mayarí, Holguín.');"
+                )
+            )
+
+            lower.contains("tienda") || lower.contains("comercial") -> listOf(
+                SqlExample(
+                    title = "1. Productos con Stock Bajo (< 20 unidades)",
+                    category = "Gestión Comercial",
+                    description = "Listado de inventario crítico que requiere reabastecimiento.",
+                    sql = "SELECT nombre, categoria, precio, stock\nFROM productos\nWHERE stock < 20\nORDER BY stock ASC;"
+                ),
+                SqlExample(
+                    title = "2. Total de Ventas por Cliente (JOIN y SUM)",
+                    category = "Finanzas y Reportes",
+                    description = "Gasto total acumulado por cada cliente con pedidos registrados.",
+                    sql = "SELECT c.nombre AS Cliente, c.ciudad, COUNT(p.id) AS Total_Pedidos, SUM(p.total) AS Gasto_Total\nFROM clientes c\nJOIN pedidos p ON c.id = p.cliente_id\nGROUP BY c.id, c.nombre, c.ciudad\nORDER BY Gasto_Total DESC;"
+                ),
+                SqlExample(
+                    title = "3. Clientes y Saldo Promedio por Ciudad",
+                    category = "Finanzas y Reportes",
+                    description = "Cantidad de clientes y saldo bancario medio por ciudad.",
+                    sql = "SELECT ciudad, COUNT(*) AS Clientes, ROUND(AVG(saldo), 2) AS Saldo_Medio\nFROM clientes\nGROUP BY ciudad\nORDER BY Clientes DESC;"
+                ),
+                SqlExample(
+                    title = "4. Detalle de Pedidos con Productos (JOIN Múltiple)",
+                    category = "Consultas Avanzadas",
+                    description = "Relaciona cada pedido con el cliente y los productos despachados.",
+                    sql = "SELECT p.id AS Pedido, c.nombre AS Cliente, pr.nombre AS Producto, dp.cantidad, dp.precio_unitario\nFROM pedidos p\nJOIN clientes c ON p.cliente_id = c.id\nJOIN detalles_pedidos dp ON p.id = dp.pedido_id\nJOIN productos pr ON dp.producto_id = pr.id\nLIMIT 20;"
+                ),
+                SqlExample(
+                    title = "Actualización Segura (UPDATE con WHERE)",
+                    category = "Solución de Errores",
+                    description = "Siempre usa WHERE en UPDATE para no alterar toda la tabla por error.",
+                    sql = "-- Siempre especifica el id para no modificar todos los productos\nUPDATE productos\nSET stock = stock + 10\nWHERE id = 1;"
+                )
+            )
+
+            lower.contains("facultad") -> listOf(
+                SqlExample(
+                    title = "1. Estudiantes con Promedio Mayor a 90 puntos",
+                    category = "Académico",
+                    description = "Estudiantes destacados de la Facultad de Ciencias.",
+                    sql = "SELECT matricula, nombre, promedio, ano_carrera\nFROM estudiantes\nWHERE promedio >= 90.0\nORDER BY promedio DESC;"
+                ),
+                SqlExample(
+                    title = "2. Claustro Docente y Materias Impartidas (JOIN)",
+                    category = "Académico",
+                    description = "Relación de asignaturas con sus profesores titulares.",
+                    sql = "SELECT m.nombre AS Materia, m.codigo, p.nombre AS Profesor, p.departamento\nFROM materias m\nJOIN profesores p ON m.profesor_id = p.id\nORDER BY p.departamento;"
+                ),
+                SqlExample(
+                    title = "3. Promedio Académico por Año de Carrera",
+                    category = "Académico",
+                    description = "Resumen de matrícula y rendimiento general por nivel de año.",
+                    sql = "SELECT ano_carrera AS Anio, COUNT(*) AS Total_Alumnos, ROUND(AVG(promedio), 2) AS Promedio_General\nFROM estudiantes\nGROUP BY ano_carrera\nORDER BY ano_carrera ASC;"
+                ),
+                SqlExample(
+                    title = "Clave Foránea Correcta",
+                    category = "Solución de Errores",
+                    description = "Inserción garantizando existencia previa del profesor padre.",
+                    sql = "INSERT INTO materias (codigo, nombre, profesor_id, creditos)\nVALUES ('IA-401', 'Aprendizaje Automático', 1, 4);"
+                )
+            )
+
+            else -> getEducationalExamples() // Default: Otorgamiento Carreras
+        }
     }
 }

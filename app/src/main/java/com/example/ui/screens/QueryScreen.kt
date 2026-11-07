@@ -16,13 +16,26 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.DragIndicator
+import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
@@ -44,6 +57,7 @@ import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material.icons.outlined.School
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.TableChart
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -52,7 +66,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -75,6 +91,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -143,6 +160,8 @@ fun QueryScreen(
     var executionResult by remember { mutableStateOf<SqlExecutionResult?>(persistedExecutionResult) }
     var isExecuting by remember { mutableStateOf(false) }
     var resultViewMode by remember { mutableIntStateOf(0) } // 0: Tabla, 1: Gráfico
+    var fabOffset by remember { mutableStateOf(Offset.Zero) }
+    var isManuallyPositioned by remember { mutableStateOf(false) }
 
     fun scrollToResults() {
         keyboardController?.hide()
@@ -233,7 +252,7 @@ fun QueryScreen(
     var showSavedDialog by remember { mutableStateOf(false) }
     var isSavingCurrent by remember { mutableStateOf(false) }
     var showExamplesDialog by remember { mutableStateOf(false) }
-    var examplesInitialCategory by remember { mutableStateOf("Todas") }
+    var rememberedExamplesCategory by rememberSaveable { mutableStateOf("Todas") }
     var showSyntaxWarningDialog by remember { mutableStateOf(false) }
     var pendingSyntaxIssues by remember { mutableStateOf<List<com.example.data.SqlSyntaxIssue>>(emptyList()) }
     var showLoadOptionsDialog by remember { mutableStateOf(false) }
@@ -381,12 +400,14 @@ fun QueryScreen(
         updateSqlQuery(TextFieldValue(snippet, TextRange(snippet.length)))
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(horizontal = 14.dp, vertical = 8.dp)
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+                .padding(bottom = 76.dp)
+        ) {
         // Quick Action Chips in sleek iOS squircle pills
         Row(
             modifier = Modifier
@@ -470,57 +491,23 @@ fun QueryScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Row 1: Primary Action & Quick Clear
+            // Row 1: Quick Query Actions (Limpiar + Ejemplos)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Execute Hero Button (iOS primary pill with electric blue & drawn play arrow)
-                Button(
-                    onClick = { executeCurrentSql() },
-                    enabled = !isExecuting,
-                    modifier = Modifier
-                        .weight(1.65f)
-                        .height(48.dp)
-                        .testTag("execute_sql_button"),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(14.dp),
-                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp, pressedElevation = 0.dp)
-                ) {
-                    if (isExecuting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = Color.White
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Ejecutando...", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    } else {
-                        Icon(
-                            imageVector = Icons.Outlined.PlayArrow,
-                            contentDescription = "Ejecutar",
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Ejecutar", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    }
-                }
-
-                // Clear Button (iOS soft card with drawn outline cleaning icon)
+                // Clear Editor Button
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable { updateSqlQuery(TextFieldValue("", TextRange(0))) }
                         .testTag("clear_sql_button"),
                     color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
                     tonalElevation = 1.dp
                 ) {
                     Row(
@@ -532,44 +519,35 @@ fun QueryScreen(
                             imageVector = Icons.Outlined.CleaningServices,
                             contentDescription = "Limpiar",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             "Limpiar",
-                            style = MaterialTheme.typography.labelLarge,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
-            }
 
-            // Row 2 & 3: Modern 2x2 Action Tools Matrix (Spacious 48dp height, no truncation, modern Material 3)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // 1. Ejemplos (AutoAwesome Sparkle)
+                // Examples Button
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable {
-                            examplesInitialCategory = "Todas"
-                            showExamplesDialog = true
-                        }
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { showExamplesDialog = true }
                         .testTag("sql_examples_button"),
                     color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.22f)),
                     tonalElevation = 1.dp
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 10.dp),
+                            .padding(horizontal = 8.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -577,48 +555,12 @@ fun QueryScreen(
                             imageVector = Icons.Outlined.AutoAwesome,
                             contentDescription = "Ejemplos",
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             "Ejemplos",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-
-                // 2. Historial (History clock)
-                Surface(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable { onOpenHistoryDrawer() }
-                        .testTag("query_history_button"),
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-                    tonalElevation = 1.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 10.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.History,
-                            contentDescription = "Historial",
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            "Historial",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.5.sp),
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -626,30 +568,68 @@ fun QueryScreen(
                 }
             }
 
+            // Row 2: Secondary Toolset (Historial + Guardar + Cargar .sql)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // 3. Guardar (Bookmark)
+                // Historial
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .clickable {
-                            isSavingCurrent = true
-                            showSavedDialog = true
-                        }
-                        .testTag("save_query_button"),
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onOpenHistoryDrawer() }
+                        .testTag("query_history_button"),
                     color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     tonalElevation = 1.dp
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 10.dp),
+                            .padding(horizontal = 6.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.History,
+                            contentDescription = "Historial",
+                            tint = MaterialTheme.colorScheme.secondary,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            "Historial",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                // Guardar
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            isSavingCurrent = true
+                            showSavedDialog = true
+                        }
+                        .testTag("save_query_button"),
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                    tonalElevation = 1.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 6.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -657,35 +637,35 @@ fun QueryScreen(
                             imageVector = Icons.Outlined.BookmarkBorder,
                             contentDescription = "Guardar",
                             tint = MaterialTheme.colorScheme.tertiary,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(15.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
                             "Guardar",
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
 
-                // 4. Cargar archivo (Folder)
+                // Cargar .sql
                 Surface(
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .clickable { showLoadOptionsDialog = true }
                         .testTag("load_query_button"),
                     color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     tonalElevation = 1.dp
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 10.dp),
+                            .padding(horizontal = 6.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -693,12 +673,12 @@ fun QueryScreen(
                             imageVector = Icons.Outlined.FolderOpen,
                             contentDescription = "Cargar SQL",
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(15.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            "Cargar .sql",
-                            style = MaterialTheme.typography.bodyMedium,
+                            "Cargar",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -879,7 +859,7 @@ fun QueryScreen(
                         Toast.makeText(context, "Sugerencia aplicada al editor SQL", Toast.LENGTH_SHORT).show()
                     },
                     onOpenExamples = { category ->
-                        examplesInitialCategory = category
+                        rememberedExamplesCategory = category
                         showExamplesDialog = true
                     },
                     modifier = Modifier.padding(bottom = 12.dp)
@@ -1020,8 +1000,147 @@ fun QueryScreen(
                 }
             }
         }
+        }
+        }
     }
-}
+
+        // Smart Intelligent Floating "Ejecutar" Button (Sole execution trigger)
+        // Docks naturally at bottom-right, auto-adapts with typing height, and supports free manual drag & re-docking
+        val lineCount = remember(sqlQuery.text) { sqlQuery.text.count { it == '\n' } + 1 }
+        val smartVerticalOffset by animateFloatAsState(
+            targetValue = if (isManuallyPositioned) 0f else {
+                when {
+                    lineCount in 2..4 -> -8f * (lineCount - 1)
+                    lineCount >= 5 -> -32f
+                    else -> 0f
+                }
+            },
+            animationSpec = spring(stiffness = Spring.StiffnessLow),
+            label = "smartFabOffset"
+        )
+        val hasSqlContent = sqlQuery.text.isNotBlank()
+        val effectiveOffsetX = fabOffset.x
+        val effectiveOffsetY = fabOffset.y + if (!isManuallyPositioned) smartVerticalOffset else 0f
+
+        Surface(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(bottom = 16.dp, end = 16.dp)
+                .imePadding()
+                .offset { IntOffset(effectiveOffsetX.roundToInt(), effectiveOffsetY.roundToInt()) }
+                .testTag("floating_execute_sql_button")
+                .testTag("execute_sql_button"),
+            shape = RoundedCornerShape(22.dp),
+            color = if (hasSqlContent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = if (hasSqlContent) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            shadowElevation = if (hasSqlContent) 8.dp else 3.dp,
+            tonalElevation = 6.dp,
+            border = BorderStroke(
+                1.dp,
+                if (hasSqlContent) Color.White.copy(alpha = 0.25f)
+                else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+            )
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 6.dp, end = 12.dp, top = 4.dp, bottom = 4.dp)
+            ) {
+                // Drag handle (Grip indicator) - allows dragging anywhere on screen
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (hasSqlContent) Color.White.copy(alpha = 0.20f)
+                            else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+                        )
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { isManuallyPositioned = true },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    fabOffset += dragAmount
+                                }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.DragIndicator,
+                        contentDescription = "Arrastrar botón flotante",
+                        tint = if (hasSqlContent) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // If manually positioned by user, offer quick re-dock anchor button
+                if (isManuallyPositioned) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (hasSqlContent) Color.White.copy(alpha = 0.18f)
+                                else MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
+                            )
+                            .clickable {
+                                fabOffset = Offset.Zero
+                                isManuallyPositioned = false
+                                Toast.makeText(context, "Seguimiento inteligente activado", Toast.LENGTH_SHORT).show()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.RestartAlt,
+                            contentDescription = "Re-anclar a posición inteligente",
+                            tint = if (hasSqlContent) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Tap target to execute current SQL
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable(enabled = !isExecuting) { executeCurrentSql() }
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isExecuting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(17.dp),
+                            strokeWidth = 2.dp,
+                            color = if (hasSqlContent) Color.White else MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Ejecutando...",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.5.sp,
+                            color = if (hasSqlContent) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.PlayArrow,
+                            contentDescription = "Ejecutar",
+                            modifier = Modifier.size(19.dp),
+                            tint = if (hasSqlContent) Color.White else MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "Ejecutar",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.5.sp,
+                            color = if (hasSqlContent) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
     }
 
     // Dialogs
@@ -1055,14 +1174,14 @@ fun QueryScreen(
 
     if (showExamplesDialog) {
         SqlExamplesDialog(
-            examples = queryRepo.getEducationalExamples(),
-            initialCategory = examplesInitialCategory,
+            examples = queryRepo.getEducationalExamplesForDb(activeDbName),
+            initialCategory = rememberedExamplesCategory,
+            onCategoryChanged = { rememberedExamplesCategory = it },
             onSelectExample = { sql ->
                 updateSqlQuery(TextFieldValue(sql, TextRange(sql.length)))
             },
             onDismiss = {
                 showExamplesDialog = false
-                examplesInitialCategory = "Todas"
             }
         )
     }
@@ -1207,20 +1326,9 @@ fun getDefaultQueryForDatabase(activeDb: String, tableNames: List<String>): Stri
 
     return when {
         isSecretaria -> """
-            -- Historial de Reasignaciones de Alumnos entre Grupos y Motivos
-            SELECT 
-                r.fecha_tramite,
-                r.nombre_estudiante,
-                r.tipo_tramite,
-                g_ant.codigo_grupo AS grupo_origen,
-                g_nue.codigo_grupo AS grupo_destino,
-                r.motivo,
-                r.secretario_tramitador,
-                r.estado_dictamen
-            FROM reasignaciones r
-            LEFT JOIN grupos g_ant ON r.id_grupo_anterior = g_ant.id_grupo
-            LEFT JOIN grupos g_nue ON r.id_grupo_nuevo = g_nue.id_grupo
-            ORDER BY r.fecha_tramite DESC;
+            -- Base de Datos: Secretaría Escolar
+            -- Tablas: grupos, materias, estudiantes_matricula, reasignaciones
+            SELECT * FROM grupos;
         """.trimIndent()
 
         isOtorgamiento -> """
@@ -1302,6 +1410,8 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
     val isCuba = activeDb.contains("cuba", ignoreCase = true) || tableNames.contains("provincias")
     val isTienda = tableNames.contains("clientes") || tableNames.contains("pedidos") ||
             activeDb.contains("tienda", ignoreCase = true)
+    val isSecretaria = activeDb.contains("secretaria", ignoreCase = true) ||
+            tableNames.contains("grupos") || tableNames.contains("reasignaciones")
     val firstTable = tableNames.firstOrNull() ?: "nueva_tabla"
 
     return when (type) {
@@ -1316,6 +1426,24 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
         """.trimIndent()
 
         "insert" -> when {
+            isSecretaria -> """
+                INSERT INTO estudiantes_matricula (
+                    numero_expediente,
+                    nombre_completo,
+                    sexo,
+                    id_grupo,
+                    promedio_ingreso,
+                    estado_matricula
+                ) VALUES (
+                    'EXP-2025-021',
+                    'Karel Ramos Ferrás',
+                    'M',
+                    1,
+                    94.30,
+                    'Activo'
+                );
+            """.trimIndent()
+
             isOtorgamiento -> """
                 INSERT INTO estudiantes (
                     carnet_identidad,
@@ -1352,7 +1480,7 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
 
             isTienda -> """
                 INSERT INTO clientes (nombre, email, telefono, ciudad, saldo)
-                VALUES ('Eduardo Sanamé', 'eduardo@ejemplo.cu', '+53 52123456', 'Moa', 250.0);
+                VALUES ('Carlos Manuel Pérez', 'carlos@ejemplo.cu', '+53 52123456', 'Moa', 250.0);
             """.trimIndent()
 
             else -> """
@@ -1361,6 +1489,12 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
         }
 
         "select" -> when {
+            isSecretaria -> """
+                SELECT id_estudiante, numero_expediente, nombre_completo, sexo, id_grupo, promedio_ingreso, estado_matricula
+                FROM estudiantes_matricula
+                ORDER BY promedio_ingreso DESC;
+            """.trimIndent()
+
             isOtorgamiento -> """
                 -- Boleta de Solicitud: Las 10 carreras elegidas por el estudiante #1
                 SELECT
@@ -1404,6 +1538,20 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
         }
 
         "join" -> when {
+            isSecretaria -> """
+                -- Estudiantes con su Grupo Oficial, Aula y Profesor Tutor
+                SELECT
+                    e.numero_expediente,
+                    e.nombre_completo AS estudiante,
+                    g.codigo_grupo AS grupo,
+                    g.aula,
+                    g.profesor_tutor,
+                    e.promedio_ingreso
+                FROM estudiantes_matricula e
+                INNER JOIN grupos g ON e.id_grupo = g.id_grupo
+                ORDER BY g.codigo_grupo, e.nombre_completo;
+            """.trimIndent()
+
             isOtorgamiento -> """
                 -- Otorgamiento Oficial: Cruce de Escalafón, Opción Alcanzada y Carrera Asignada
                 SELECT
@@ -1466,6 +1614,20 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
         }
 
         "group" -> when {
+            isSecretaria -> """
+                -- Matrícula y Promedio por Grupo Escolar
+                SELECT
+                    g.codigo_grupo AS grupo,
+                    g.grado,
+                    g.especialidad,
+                    COUNT(e.id_estudiante) AS total_alumnos,
+                    ROUND(AVG(e.promedio_ingreso), 2) AS promedio_grupo
+                FROM grupos g
+                LEFT JOIN estudiantes_matricula e ON g.id_grupo = e.id_grupo
+                GROUP BY g.id_grupo, g.codigo_grupo
+                ORDER BY g.grado, g.codigo_grupo;
+            """.trimIndent()
+
             isOtorgamiento -> """
                 -- Demanda de Carreras: Solicitudes en 1ra opción vs. total en las 10 opciones
                 SELECT

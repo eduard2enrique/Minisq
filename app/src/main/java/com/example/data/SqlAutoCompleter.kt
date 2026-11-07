@@ -316,10 +316,24 @@ object SqlAutoCompleter {
                 }
             }.take(8).forEach { results.add(it) }
 
+            // Offer operators with quotes directly
+            results.add(SqlSuggestion("= '' ", "= 'texto'", SuggestionCategory.OPERATOR, "Comparar texto entre comillas", cursorOffsetFromEnd = 2))
+            results.add(SqlSuggestion("LIKE '%%' ", "LIKE '%patrón%'", SuggestionCategory.KEYWORD, "Filtro de texto LIKE con comillas", cursorOffsetFromEnd = 3))
+            results.add(SqlSuggestion("IN ('', '') ", "IN ('v1', 'v2')", SuggestionCategory.KEYWORD, "Lista de textos entre comillas", cursorOffsetFromEnd = 7))
+            return results
+        }
+
+        // 5b. Right after =, LIKE, IN, VALUES, SET or comparisons (Context for text literals)
+        if (upper.endsWith("=") || upper.endsWith("LIKE") || upper.endsWith("IN") || upper.endsWith("VALUES") || upper.endsWith("SET") || upper.endsWith("!=") || upper.endsWith("<>")) {
+            results.add(SqlSuggestion("'' ", "'texto'", SuggestionCategory.OPERATOR, "Cadena de texto entre comillas simples", cursorOffsetFromEnd = 2))
+            results.add(SqlSuggestion("'%texto%' ", "'%texto%'", SuggestionCategory.OPERATOR, "Patrón de texto con comodines", cursorOffsetFromEnd = 3))
+            results.add(SqlSuggestion("(' ', ' ') ", "('t1', 't2')", SuggestionCategory.OPERATOR, "Valores de texto para INSERT", cursorOffsetFromEnd = 8))
+            results.add(SqlSuggestion("NULL ", "NULL", SuggestionCategory.KEYWORD, "Valor nulo"))
             return results
         }
 
         // 6. Generic intelligent fallback suggestions
+        results.add(SqlSuggestion("'' ", "'texto'", SuggestionCategory.OPERATOR, "Comillas para texto", cursorOffsetFromEnd = 2))
         results.add(SqlSuggestion("WHERE ", "WHERE", SuggestionCategory.KEYWORD, "Filtrar por condición"))
         results.add(SqlSuggestion("AND ", "AND", SuggestionCategory.KEYWORD, "Condición adicional"))
         results.add(SqlSuggestion("OR ", "OR", SuggestionCategory.KEYWORD, "Condición alternativa"))

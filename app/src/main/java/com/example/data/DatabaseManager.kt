@@ -42,7 +42,7 @@ class DatabaseManager(private val context: Context) {
     private fun ensureInitialDatabase() {
         val otorgamientoFile = File(dbDir, "otorgamiento_carreras.db")
         val currentOtorgamientoVer = prefs.getInt("otorgamiento_db_ver", 0)
-        val TARGET_OTORGAMIENTO_VER = 5
+        val TARGET_OTORGAMIENTO_VER = 6
         if (!otorgamientoFile.exists() || currentOtorgamientoVer < TARGET_OTORGAMIENTO_VER) {
             if (otorgamientoFile.exists()) {
                 otorgamientoFile.delete()
@@ -69,9 +69,17 @@ class DatabaseManager(private val context: Context) {
             prefs.edit().putString("template_tienda_comercial.db", "sample").apply()
         }
         val secretariaFile = File(dbDir, "secretaria_escolar.db")
-        if (!secretariaFile.exists()) {
+        val currentSecretariaVer = prefs.getInt("secretaria_db_ver", 0)
+        val TARGET_SECRETARIA_VER = 2
+        if (!secretariaFile.exists() || currentSecretariaVer < TARGET_SECRETARIA_VER) {
+            if (secretariaFile.exists()) {
+                secretariaFile.delete()
+            }
             createSampleSecretariaEscolar(secretariaFile)
-            prefs.edit().putString("template_secretaria_escolar.db", "secretaria_escolar").apply()
+            prefs.edit()
+                .putString("template_secretaria_escolar.db", "secretaria_escolar")
+                .putInt("secretaria_db_ver", TARGET_SECRETARIA_VER)
+                .apply()
         }
     }
 
@@ -1492,7 +1500,7 @@ class DatabaseManager(private val context: Context) {
                 ('95313112345', '2026-031', 'Yoandry Hechavarría Ortiz', 'M', 'Preuniversitario', 96.70, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
                 ('95323223456', '2026-032', 'Gretel Carralero Leyva', 'F', 'Preuniversitario', 95.80, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
                 ('95333334567', '2026-033', 'Osmel Pérez Miranda', 'M', 'Preuniversitario', 94.50, 'Holguín', 'Moa', 'IPU Pedro Soto Alba'),
-                ('95343445678', '2026-034', 'Eduardo Enrique Sanamé', 'M', 'Preuniversitario', 97.40, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
+                ('95343445678', '2026-034', 'Enrique Durán Tamayo', 'M', 'Preuniversitario', 97.40, 'Holguín', 'Moa', 'IPU Antonio López Fernández'),
                 ('95353556789', '2026-035', 'Beatriz Montero Guilarte', 'F', 'Preuniversitario', 92.80, 'Holguín', 'Moa', 'IPU Antonio López Fernández');
             """.trimIndent())
 
@@ -1680,7 +1688,7 @@ class DatabaseManager(private val context: Context) {
                 (3, 'QUIM-10', 'Química Inorgánica', 'Ciencias Naturales', 4, 'Dra. Celia Tamayo Núñez'),
                 (4, 'ESP-10', 'Español-Literatura', 'Humanidades', 5, 'Lic. Isabel González Cruz'),
                 (5, 'HIST-10', 'Historia Contemporánea', 'Humanidades', 4, 'MSc. Armando Batista Romero'),
-                (6, 'INF-10', 'Informática y Algoritmos', 'Tecnología', 4, 'Lic. Yanet Pérez Fat'),
+                (6, 'INF-10', 'Informática y Algoritmos', 'Tecnología', 4, 'Prof. Eduardo Sanamé Durán'),
                 (7, 'BIOL-11', 'Biología Molecular', 'Ciencias Naturales', 5, 'Dra. Celia Tamayo Núñez'),
                 (8, 'ING-10', 'Inglés Comunicativo', 'Idiomas', 3, 'Lic. Roxana Díaz Ferrás');
             """.trimIndent())
@@ -1718,7 +1726,7 @@ class DatabaseManager(private val context: Context) {
                 (3, '2025-09-18', 'Permuta', 17, 'Jorge Luis Morales Durán', 2, 3, NULL, 'Contraparte de permuta acordada con estudiante EXP-2025-006', 'Lic. Tania Valdés Ochoa', 'Aprobado', 'Pasa al turno de la tarde por conveniencia de transporte.'),
                 (4, '2025-09-25', 'Nivelación de Matrícula', 7, 'Ernesto Marrero Silva', 3, 1, NULL, 'Nivelación de sobrecupo en aula 103 por balance de capacidad', 'MSc. Ernesto Leyva Rojas', 'Aprobado', 'Capacidad en aula 101 disponible tras baja.'),
                 (5, '2025-10-04', 'Cambio de Especialidad', 11, 'David Estrada Núñez', 5, 4, 2, 'Reorientación de Ciencias Naturales a Ciencias Exactas (Física)', 'Lic. Beatriz Peña Reyes', 'Aprobado', 'Autorizado por Consejo de Dirección.'),
-                (6, '2025-10-12', 'Ajuste Curricular Optativo', 4, 'Melisa Leyva Rojas', 2, 2, 6, 'Inscripción extraordinaria en Informática y Algoritmos', 'Lic. Yanet Pérez Fat', 'Aprobado', 'Excelente rendimiento previo en lógica.'),
+                (6, '2025-10-12', 'Ajuste Curricular Optativo', 4, 'Melisa Leyva Rojas', 2, 2, 6, 'Inscripción extraordinaria en Informática y Algoritmos', 'Prof. Eduardo Sanamé Durán', 'Aprobado', 'Excelente rendimiento previo en lógica.'),
                 (7, '2025-10-20', 'Baja por Traslado', 15, 'Héctor Leyva Almaguer', 7, NULL, NULL, 'Traslado de centro escolar por cambio de provincia familiar', 'Lic. Beatriz Peña Reyes', 'Aprobado', 'Expediente remitido a IPVCE José Martí.'),
                 (8, '2025-10-28', 'Cambio de Grupo', 19, 'Rubén Almaguer Ramos', 5, 4, 1, 'Rendimiento sobresaliente en concurso provincial de Matemática', 'MSc. Roberto Durán Castillo', 'Aprobado', 'Incorporación a grupo de alto rendimiento.'),
                 (9, '2025-11-02', 'Reasignación de Tutoría', NULL, 'Comité de Grado 10mo', 2, 2, NULL, 'Designación de nuevo tutor por comisión de servicio del titular', 'Lic. Beatriz Peña Reyes', 'Aprobado', 'Asume Lic. Manuel Fuentes Silva temporalmente.'),

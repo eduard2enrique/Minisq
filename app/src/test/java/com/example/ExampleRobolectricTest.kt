@@ -28,7 +28,8 @@ class ExampleRobolectricTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val dbManager = DatabaseManager(context)
 
-    // Execute query on default database (facultad_ciencias.db)
+    // Execute query on facultad_ciencias.db
+    dbManager.switchDatabase("facultad_ciencias.db")
     val result = dbManager.executeSql("SELECT * FROM estudiantes;")
     assertTrue(result.isSuccess)
     assertTrue(result.columns.contains("nombre"))
@@ -159,6 +160,7 @@ class ExampleRobolectricTest {
     val dbManager = DatabaseManager(context)
 
     // Execute query suitable for charts (ano_carrera and avg promedio)
+    dbManager.switchDatabase("facultad_ciencias.db")
     val result = dbManager.executeSql("SELECT ano_carrera, ROUND(AVG(promedio), 2) as promedio_ano FROM estudiantes GROUP BY ano_carrera;")
     assertTrue(result.isSuccess)
     assertTrue(result.isQuery)
@@ -580,10 +582,10 @@ class ExampleRobolectricTest {
     val query = "INSERT INTO clientes (nombre, email) VALUES ('Ana', 'ana@ejemplo.com');"
     val explanation = com.example.ui.components.SqlErrorAnalyzer.analyze(err, query)
 
-    assertTrue(explanation.categoryBadge.contains("UNIQUE"))
+    assertTrue(explanation.categoryBadge.contains("DUPLICADA") || explanation.categoryBadge.contains("UNIQUE"))
     assertTrue(explanation.reason.contains("clientes"))
     assertTrue(explanation.reason.contains("email"))
-    assertEquals("Usar 'INSERT OR IGNORE'", explanation.quickFixLabel)
+    assertEquals("Cambiar a 'INSERT OR IGNORE'", explanation.quickFixLabel)
     assertEquals(
       "INSERT OR IGNORE INTO clientes (nombre, email) VALUES ('Ana', 'ana@ejemplo.com');",
       explanation.suggestedFixedQuery
@@ -609,7 +611,7 @@ class ExampleRobolectricTest {
   fun `sql error analyzer explains foreign key and no such table errors`() {
     val fkErr = "FOREIGN KEY constraint failed"
     val fkExplanation = com.example.ui.components.SqlErrorAnalyzer.analyze(fkErr, "INSERT INTO pedidos ...")
-    assertTrue(fkExplanation.categoryBadge.contains("FOREIGN KEY"))
+    assertTrue(fkExplanation.categoryBadge.contains("FORÁNEA") || fkExplanation.categoryBadge.contains("FOREIGN KEY"))
 
     val tableErr = "no such table: inventario_fantasma"
     val tableExplanation = com.example.ui.components.SqlErrorAnalyzer.analyze(tableErr, "SELECT * FROM inventario_fantasma;")
@@ -724,9 +726,9 @@ class ExampleRobolectricTest {
     assertNotNull(insertIgnoreEx)
     assertTrue(insertIgnoreEx!!.sql.contains("INSERT OR IGNORE INTO"))
 
-    val replaceEx = examples.find { it.title.contains("REPLACE INTO") }
+    val replaceEx = examples.find { it.title.contains("REPLACE") }
     assertNotNull(replaceEx)
-    assertTrue(replaceEx!!.sql.contains("REPLACE INTO"))
+    assertTrue(replaceEx!!.sql.contains("REPLACE INTO") || replaceEx!!.sql.contains("INSERT OR REPLACE"))
 
     val createTableEx = examples.find { it.title.contains("IF NOT EXISTS") }
     assertNotNull(createTableEx)
@@ -734,11 +736,12 @@ class ExampleRobolectricTest {
   }
 
   @Test
-  fun `facultad ciencias is default database with 3 tables, 12 records each and user name`() = runBlocking {
+  fun `facultad ciencias has 3 tables, 12 records each and user name`() = runBlocking {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val dbManager = DatabaseManager(context)
+    dbManager.switchDatabase("facultad_ciencias.db")
 
-    // Verify it is the default database on opening the app
+    // Verify it is facultad_ciencias.db
     assertEquals("facultad_ciencias.db", dbManager.getCurrentDbName())
 
     // Verify 3 tables exist

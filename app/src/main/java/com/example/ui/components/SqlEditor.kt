@@ -212,6 +212,14 @@ fun SqlEditor(
     fun insertQuickKeyword(kw: String) {
         val raw = value.text
         val cur = cursorIndex.coerceIn(0, raw.length)
+        if (kw == "''" || kw == "' '") {
+            val prefixSpace = if (cur > 0 && !raw[cur - 1].isWhitespace() && raw[cur - 1] != '(' && raw[cur - 1] != ',' && raw[cur - 1] != '=') " " else ""
+            val snippet = "$prefixSpace''"
+            val newText = raw.substring(0, cur) + snippet + raw.substring(cur)
+            val newCursor = (cur + snippet.length - 1).coerceIn(0, newText.length)
+            updateValueWithHistory(TextFieldValue(newText, TextRange(newCursor)))
+            return
+        }
         val prefixSpace = if (cur > 0 && !raw[cur - 1].isWhitespace() && raw[cur - 1] != '(' && raw[cur - 1] != ',') " " else ""
         val suffixSpace = if (kw == ";" || kw == "*") "" else " "
         val snippet = "$prefixSpace$kw$suffixSpace"
@@ -519,7 +527,7 @@ fun SqlEditor(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val quickKeywords = listOf(
-                        "SELECT", "*", "FROM", "WHERE", "AND", "OR", "JOIN", "ON",
+                        "SELECT", "*", "FROM", "WHERE", "''", "=", "LIKE", "AND", "OR", "JOIN", "ON",
                         "ORDER BY", "GROUP BY", "LIMIT", "INSERT INTO", "UPDATE", "DELETE FROM", ";"
                     )
                     quickKeywords.forEach { kw ->

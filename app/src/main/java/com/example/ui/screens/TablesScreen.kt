@@ -674,6 +674,8 @@ fun TablesScreen(
                     // Vista Diseño (Por defecto): Diagrama ER interactivo con relaciones y botón de crear tabla
                     DesignerScreen(
                         dbManager = dbManager,
+                        activeDbName = activeDbName,
+                        tablesCount = tables.size,
                         onRefreshTables = onRefreshTables,
                         onResetCurrentDb = onResetCurrentDb,
                         onSelectTable = { tName ->
@@ -1481,19 +1483,6 @@ fun TablesScreen(
                                         )
                                     }
                                 }
-
-                                // Prominent Floating Action Button for Inserting Records
-                                ExtendedFloatingActionButton(
-                                    onClick = { showInsertRowDialog = true },
-                                    icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-                                    text = { Text("Nuevo Registro") },
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(16.dp)
-                                        .testTag("table_add_row_fab")
-                                )
                             }
                         }
             }

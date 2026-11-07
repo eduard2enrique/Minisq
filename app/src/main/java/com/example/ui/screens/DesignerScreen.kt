@@ -142,6 +142,8 @@ data class NewColumnDraft(
 @Composable
 fun DesignerScreen(
     dbManager: DatabaseManager,
+    activeDbName: String = dbManager.getCurrentDbName(),
+    tablesCount: Int = 0,
     onRefreshTables: () -> Unit,
     onResetCurrentDb: (() -> Unit)? = null,
     onSelectTable: ((String) -> Unit)? = null,
@@ -150,11 +152,11 @@ fun DesignerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    var schemas by remember { mutableStateOf<List<TableSchemaDetail>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var schemas by remember(activeDbName) { mutableStateOf<List<TableSchemaDetail>>(emptyList()) }
+    var isLoading by remember(activeDbName) { mutableStateOf(true) }
 
     // Table positions for ER Canvas
-    val tablePositions = remember { mutableStateMapOf<String, Offset>() }
+    val tablePositions = remember(activeDbName) { mutableStateMapOf<String, Offset>() }
 
     // Dialog state
     var showNewTableDialog by remember { mutableStateOf(false) }
@@ -166,6 +168,9 @@ fun DesignerScreen(
         scope.launch {
             val all = dbManager.getAllTablesSchema()
             schemas = all
+            // Clean up any keys not in the current database
+            val validNames = all.map { it.tableName }.toSet()
+            tablePositions.keys.retainAll(validNames)
             // Calculate positions in a smart grid layout if not set
             all.forEachIndexed { index, schema ->
                 if (!tablePositions.containsKey(schema.tableName)) {
@@ -180,7 +185,8 @@ fun DesignerScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(activeDbName, tablesCount) {
+        tablePositions.clear()
         loadSchemas()
     }
 
@@ -505,7 +511,7 @@ fun TableEntityCard(
 ) {
     Card(
         modifier = Modifier
-            .width(260.dp)
+            .width(280.dp)
             .shadow(6.dp, RoundedCornerShape(12.dp))
             .clickable(enabled = onSelectTable != null) {
                 onSelectTable?.invoke(schema.tableName)
@@ -525,7 +531,10 @@ fun TableEntityCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false).padding(end = 4.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Outlined.TableChart,
                         contentDescription = null,
@@ -537,7 +546,9 @@ fun TableEntityCard(
                         text = schema.tableName,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -576,7 +587,10 @@ fun TableEntityCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f, fill = false).padding(end = 6.dp)
+                        ) {
                             if (col.isPrimaryKey) {
                                 Icon(
                                     imageVector = Icons.Outlined.Key,
@@ -601,7 +615,9 @@ fun TableEntityCard(
                                 text = col.name,
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = if (col.isPrimaryKey) FontWeight.Bold else FontWeight.Normal,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
@@ -625,12 +641,13 @@ fun TableEntityCard(
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    Column {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         schema.foreignKeys.forEach { fk ->
                             Text(
-                                text = "🔗 ${fk.fromColumn} ➔ ${fk.targetTable}(🔑 ${fk.toColumn} [PK])",
+                                text = "🔗 ${fk.fromColumn} ➔ ${fk.targetTable}(🔑 ${fk.toColumn})",
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                color = MaterialTheme.colorScheme.secondary
+                                color = MaterialTheme.colorScheme.secondary,
+                                softWrap = true
                             )
                         }
                     }
