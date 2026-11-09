@@ -35,11 +35,14 @@ import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Input
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.School
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
@@ -61,6 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -332,10 +336,13 @@ fun DatabaseSelectorDialog(
 @Composable
 fun QueryHistoryDialog(
     history: List<QueryHistoryItem>,
+    activeDbName: String = "otorgamiento_carreras.db",
     onSelectQuery: (String) -> Unit,
+    onExecuteQuery: ((String) -> Unit)? = null,
     onClearHistory: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val dateFormat = remember { SimpleDateFormat("dd/MM HH:mm:ss", Locale.getDefault()) }
 
     AlertDialog(
@@ -350,13 +357,33 @@ fun QueryHistoryDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(
-                        imageVector = Icons.Outlined.History,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.History,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Historial de Consultas")
+                    Column {
+                        Text(
+                            text = "Historial de Consultas",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Consultas completas y compartibles",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(imageVector = Icons.Outlined.Close, contentDescription = "Cerrar")
@@ -399,46 +426,142 @@ fun QueryHistoryDialog(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 350.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(history) { item ->
                             Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onSelectQuery(item.sql)
-                                        onDismiss()
-                                    },
+                                modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
                                 ),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                             ) {
                                 Column(modifier = Modifier.padding(10.dp)) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Text(
-                                            text = if (item.isSuccess) "Éxito (${item.elapsedMs} ms)" else "Error",
+                                            text = if (item.isSuccess) "Éxito (${item.elapsedMs} ms • ${item.rowsCount} filas)" else "Error",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = if (item.isSuccess) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
                                             text = dateFormat.format(Date(item.timestamp)),
-                                            style = MaterialTheme.typography.labelSmall,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = item.sql,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                        maxLines = 3,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    // Complete non-truncated SQL box
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surface,
+                                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                onSelectQuery(item.sql)
+                                                onDismiss()
+                                            }
+                                    ) {
+                                        Text(
+                                            text = item.sql.trim(),
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 11.5.sp,
+                                                lineHeight = 16.sp
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(8.dp),
+                                            maxLines = Int.MAX_VALUE,
+                                            overflow = TextOverflow.Clip,
+                                            softWrap = true
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Action Buttons: Cargar, Ejecutar, Compartir WhatsApp
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                onSelectQuery(item.sql)
+                                                onDismiss()
+                                            },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(32.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 6.dp)
+                                        ) {
+                                            Icon(Icons.Outlined.Input, contentDescription = null, modifier = Modifier.size(13.dp))
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text("Cargar", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+                                        }
+
+                                        if (onExecuteQuery != null) {
+                                            FilledTonalButton(
+                                                onClick = {
+                                                    onExecuteQuery(item.sql)
+                                                    onDismiss()
+                                                },
+                                                modifier = Modifier
+                                                    .weight(1.1f)
+                                                    .height(32.dp),
+                                                shape = RoundedCornerShape(8.dp),
+                                                colors = ButtonDefaults.filledTonalButtonColors(
+                                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 6.dp)
+                                            ) {
+                                                Icon(Icons.Outlined.PlayArrow, contentDescription = null, modifier = Modifier.size(13.dp))
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                                Text("Ejecutar", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+                                            }
+                                        }
+
+                                        // Compartir WhatsApp / SQL
+                                        Surface(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    val statusText = if (item.isSuccess) "Éxito (${item.rowsCount} filas en ${item.elapsedMs}ms)" else "Error"
+                                                    val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                        type = "text/plain"
+                                                        putExtra(
+                                                            android.content.Intent.EXTRA_TEXT,
+                                                            "*MiniSQL Pro - Consulta SQL*\nBase: `${activeDbName.removeSuffix(".db")}`\n\n```sql\n${item.sql.trim()}\n```\n\n⏱ $statusText\n_Compartido desde MiniSQL Pro_"
+                                                        )
+                                                    }
+                                                    val chooser = android.content.Intent.createChooser(sendIntent, "Compartir consulta SQL")
+                                                    context.startActivity(chooser)
+                                                },
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Share,
+                                                    contentDescription = "Compartir por WhatsApp",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -621,8 +744,10 @@ fun SqlExamplesDialog(
     initialCategory: String = "Todas",
     onCategoryChanged: ((String) -> Unit)? = null,
     onSelectExample: (String) -> Unit,
+    onExecuteExample: ((String) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val categories = remember(examples) {
         listOf("Todas") + examples.map { it.category }.distinct()
     }
@@ -825,33 +950,89 @@ fun SqlExamplesDialog(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                // Action Button
+                                // Action Buttons
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    FilledTonalButton(
+                                    OutlinedButton(
                                         onClick = {
                                             onSelectExample(ex.sql)
                                             onDismiss()
                                         },
                                         shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                         modifier = Modifier.height(36.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Outlined.PlayArrow,
+                                            imageVector = Icons.Outlined.Input,
                                             contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
+                                            modifier = Modifier.size(15.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "Cargar en editor",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 11.5.sp
-                                            )
+                                            text = "Cargar",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold)
                                         )
+                                    }
+
+                                    if (onExecuteExample != null) {
+                                        FilledTonalButton(
+                                            onClick = {
+                                                onExecuteExample(ex.sql)
+                                                onDismiss()
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.filledTonalButtonColors(
+                                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(36.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.PlayArrow,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Ejecutar",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.weight(1f))
+
+                                    // Share button
+                                    Surface(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .clickable {
+                                                val sendIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                                    type = "text/plain"
+                                                    putExtra(
+                                                        android.content.Intent.EXTRA_TEXT,
+                                                        "*MiniSQL Pro - Ejemplo SQL: ${ex.title}*\n\n```sql\n${ex.sql}\n```\n\n_${ex.description}_\n_Compartido desde MiniSQL Pro_"
+                                                    )
+                                                }
+                                                val chooser = android.content.Intent.createChooser(sendIntent, "Compartir ejemplo SQL")
+                                                context.startActivity(chooser)
+                                            },
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Share,
+                                                contentDescription = "Compartir ejemplo",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

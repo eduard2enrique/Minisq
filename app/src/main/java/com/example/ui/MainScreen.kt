@@ -221,6 +221,7 @@ fun MainScreen(
         drawerContent = {
             HistorySideDrawer(
                 history = historyList,
+                activeDbName = currentDbName,
                 onSelectQuery = { sql ->
                     selectedTab = 0
                     externalSelectedSql = sql

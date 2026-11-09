@@ -1180,6 +1180,10 @@ fun QueryScreen(
             onSelectExample = { sql ->
                 updateSqlQuery(TextFieldValue(sql, TextRange(sql.length)))
             },
+            onExecuteExample = { sql ->
+                updateSqlQuery(TextFieldValue(sql, TextRange(sql.length)))
+                executeCurrentSql(force = true)
+            },
             onDismiss = {
                 showExamplesDialog = false
             }
