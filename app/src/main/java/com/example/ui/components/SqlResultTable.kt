@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,10 +24,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Sort
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -35,8 +41,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,15 +52,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.SqlExecutionResult
 
+/**
+ * DataGrid interactivo con soporte de ordenamiento por columnas, paginación configurable,
+ * filtro en tiempo real, anchos de columna adaptativos y copiado rápido de celdas.
+ */
 @Composable
 fun SqlResultTable(
     result: SqlExecutionResult,
@@ -62,8 +75,23 @@ fun SqlResultTable(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     var searchQuery by remember { mutableStateOf("") }
 
+    // Estado del ordenamiento por columna
+    var sortColumnIndex by remember { mutableStateOf<Int?>(null) }
+    var sortAscending by remember { mutableStateOf(true) }
+
+    // Estado de paginación (tamaños: 10, 25, 50, 0 = Todos)
+    var pageSize by remember { mutableIntStateOf(10) }
+    var currentPage by remember { mutableIntStateOf(0) }
+
+    // Resetear página al cambiar la consulta o la búsqueda
+    LaunchedEffect(result, searchQuery, pageSize) {
+        currentPage = 0
+    }
+
+    // 1. Filtrar filas según la búsqueda
     val filteredRows by remember(result.rows, searchQuery) {
         derivedStateOf {
             if (searchQuery.isBlank()) {
@@ -76,6 +104,53 @@ fun SqlResultTable(
         }
     }
 
+    // 2. Ordenar filas según la columna seleccionada
+    val sortedRows by remember(filteredRows, sortColumnIndex, sortAscending) {
+        derivedStateOf {
+            val colIdx = sortColumnIndex ?: return@derivedStateOf filteredRows
+            filteredRows.sortedWith { rowA, rowB ->
+                val valA = rowA.getOrNull(colIdx) ?: ""
+                val valB = rowB.getOrNull(colIdx) ?: ""
+
+                // Manejo de valores NULL al final
+                if (valA == "NULL" && valB != "NULL") return@sortedWith if (sortAscending) 1 else -1
+                if (valB == "NULL" && valA != "NULL") return@sortedWith if (sortAscending) -1 else 1
+
+                // Comparación numérica si ambos son números, o alfabética
+                val numA = valA.toDoubleOrNull()
+                val numB = valB.toDoubleOrNull()
+                val cmp = if (numA != null && numB != null) {
+                    numA.compareTo(numB)
+                } else {
+                    valA.compareTo(valB, ignoreCase = true)
+                }
+                if (sortAscending) cmp else -cmp
+            }
+        }
+    }
+
+    // 3. Paginación de filas
+    val totalRows = sortedRows.size
+    val totalPages = remember(totalRows, pageSize) {
+        if (pageSize <= 0 || totalRows == 0) 1
+        else ((totalRows + pageSize - 1) / pageSize).coerceAtLeast(1)
+    }
+
+    // Asegurar que currentPage no exceda totalPages
+    val safeCurrentPage = currentPage.coerceIn(0, (totalPages - 1).coerceAtLeast(0))
+
+    val displayedRows by remember(sortedRows, safeCurrentPage, pageSize) {
+        derivedStateOf {
+            if (pageSize <= 0) {
+                sortedRows
+            } else {
+                val fromIndex = (safeCurrentPage * pageSize).coerceAtMost(sortedRows.size)
+                val toIndex = ((safeCurrentPage + 1) * pageSize).coerceAtMost(sortedRows.size)
+                if (fromIndex >= toIndex) emptyList() else sortedRows.subList(fromIndex, toIndex)
+            }
+        }
+    }
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -84,13 +159,12 @@ fun SqlResultTable(
         tonalElevation = 2.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-            // Header bar: Compact Search Pill and Export/Report actions aligned at 36dp
+            // Barra superior: Búsqueda rápida + Botones de Acción (Informe, CSV, JSON)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Sleek, compact search bar (height 36.dp) matching adjacent buttons perfectly
                 Surface(
                     modifier = Modifier
                         .weight(1f)
@@ -118,7 +192,7 @@ fun SqlResultTable(
                         ) {
                             if (searchQuery.isEmpty()) {
                                 Text(
-                                    text = "Filtrar...",
+                                    text = "Filtrar en tabla...",
                                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
                                     maxLines = 1
@@ -222,26 +296,79 @@ fun SqlResultTable(
                 }
             }
 
+            // Indicador de ordenamiento activo (si hay alguna columna ordenada)
+            if (sortColumnIndex != null) {
+                val sortedColName = result.columns.getOrNull(sortColumnIndex!!) ?: "Columna"
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (sortAscending) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Ordenado por $sortedColName (${if (sortAscending) "A-Z / 0-9" else "Z-A / 9-0"})",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Outlined.Close,
+                                contentDescription = "Quitar orden",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .size(13.dp)
+                                    .clickable {
+                                        sortColumnIndex = null
+                                        sortAscending = true
+                                    }
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Toca una columna para ordenar",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Scrollable Grid with content-adaptive column widths
+            // Scrollable Grid con anchos de columna adaptativos
             val horizontalScrollState = rememberScrollState()
 
-            // Calculate optimal column width dynamically based on column name & cell contents
             val columnWidths = remember(result.columns, result.rows) {
                 result.columns.indices.map { colIdx ->
                     val header = result.columns[colIdx]
                     val maxCellLen = result.rows.maxOfOrNull { it.getOrNull(colIdx)?.length ?: 0 } ?: 0
                     val maxLen = maxOf(header.length, maxCellLen)
                     when {
-                        maxLen <= 4 -> 68.dp
-                        maxLen <= 7 -> 90.dp
-                        maxLen <= 12 -> 122.dp
-                        maxLen <= 18 -> 165.dp
-                        maxLen <= 26 -> 220.dp
-                        maxLen <= 38 -> 280.dp
-                        maxLen <= 50 -> 335.dp
-                        else -> 380.dp
+                        maxLen <= 4 -> 72.dp
+                        maxLen <= 7 -> 96.dp
+                        maxLen <= 12 -> 130.dp
+                        maxLen <= 18 -> 175.dp
+                        maxLen <= 26 -> 230.dp
+                        maxLen <= 38 -> 290.dp
+                        maxLen <= 50 -> 345.dp
+                        else -> 390.dp
                     }
                 }
             }
@@ -249,108 +376,173 @@ fun SqlResultTable(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 320.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .heightIn(max = 330.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(horizontalScrollState)
                 ) {
-                    // Table Header Row
+                    // Encabezado interactivo del DataGrid (Permite ordenar columnas)
                     Row(
                         modifier = Modifier
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
-                            .padding(vertical = 8.dp, horizontal = 4.dp)
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Index column
+                        // Columna del índice (#)
                         Text(
                             text = "#",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
-                                .width(40.dp)
+                                .width(44.dp)
                                 .padding(horizontal = 4.dp)
                         )
 
+                        // Columnas con interacción de ordenamiento
                         result.columns.forEachIndexed { colIdx, colName ->
                             val colWidth = columnWidths.getOrElse(colIdx) { 130.dp }
-                            AutoResizeText(
-                                text = colName,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 2,
-                                minFontSize = 9.sp,
-                                targetFontSize = 12.sp,
+                            val isSorted = sortColumnIndex == colIdx
+
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isSorted) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else androidx.compose.ui.graphics.Color.Transparent,
                                 modifier = Modifier
                                     .width(colWidth)
-                                    .padding(horizontal = 6.dp)
-                            )
+                                    .clickable {
+                                        if (sortColumnIndex == colIdx) {
+                                            if (sortAscending) {
+                                                sortAscending = false
+                                            } else {
+                                                // Si ya estaba descendente, reiniciar a sin ordenar
+                                                sortColumnIndex = null
+                                                sortAscending = true
+                                            }
+                                        } else {
+                                            sortColumnIndex = colIdx
+                                            sortAscending = true
+                                        }
+                                    }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                ) {
+                                    AutoResizeText(
+                                        text = colName,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (isSorted) FontWeight.ExtraBold else FontWeight.Bold,
+                                        color = if (isSorted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 2,
+                                        minFontSize = 9.sp,
+                                        targetFontSize = 12.sp,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+
+                                    Spacer(modifier = Modifier.width(3.dp))
+
+                                    if (isSorted) {
+                                        Icon(
+                                            imageVector = if (sortAscending) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                                            contentDescription = if (sortAscending) "Orden ascendente" else "Orden descendente",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Sort,
+                                            contentDescription = "Ordenar por esta columna",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
-                    // Table Data Rows
-                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                        itemsIndexed(filteredRows) { index, row ->
-                            val rowBg = if (index % 2 == 0) {
-                                MaterialTheme.colorScheme.surface
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                            }
+                    // Filas de datos paginadas
+                    if (displayedRows.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (searchQuery.isNotEmpty()) "No hay filas que coincidan con '$searchQuery'" else "Sin registros",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    } else {
+                        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                            itemsIndexed(displayedRows) { indexInPage, row ->
+                                val globalIndex = (safeCurrentPage * pageSize) + indexInPage
+                                val rowBg = if (indexInPage % 2 == 0) {
+                                    MaterialTheme.colorScheme.surface
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                }
 
-                            Row(
-                                modifier = Modifier
-                                    .background(rowBg)
-                                    .padding(vertical = 7.dp, horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "${index + 1}",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                Row(
                                     modifier = Modifier
-                                        .width(40.dp)
-                                        .padding(horizontal = 4.dp)
-                                )
-
-                                row.forEachIndexed { colIdx, cellValue ->
-                                    val colWidth = columnWidths.getOrElse(colIdx) { 130.dp }
-                                    val isNull = cellValue == "NULL"
-                                    val colName = result.columns.getOrElse(colIdx) { "Dato" }
-
-                                    Box(
+                                        .background(rowBg)
+                                        .padding(vertical = 7.dp, horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Índice global de la fila
+                                    Text(
+                                        text = "${globalIndex + 1}",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                                         modifier = Modifier
-                                            .width(colWidth)
-                                            .padding(horizontal = 6.dp)
-                                            .clickable {
-                                                if (cellValue.length > 12) {
-                                                    android.widget.Toast.makeText(
+                                            .width(44.dp)
+                                            .padding(horizontal = 4.dp)
+                                    )
+
+                                    // Celdas de la fila
+                                    row.forEachIndexed { colIdx, cellValue ->
+                                        val colWidth = columnWidths.getOrElse(colIdx) { 130.dp }
+                                        val isNull = cellValue == "NULL"
+                                        val colName = result.columns.getOrElse(colIdx) { "Dato" }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .width(colWidth)
+                                                .padding(horizontal = 6.dp)
+                                                .clickable {
+                                                    clipboardManager.setText(AnnotatedString(cellValue))
+                                                    Toast.makeText(
                                                         context,
-                                                        "$colName:\n$cellValue",
-                                                        android.widget.Toast.LENGTH_SHORT
+                                                        "Copiado ($colName): $cellValue",
+                                                        Toast.LENGTH_SHORT
                                                     ).show()
                                                 }
-                                            }
-                                    ) {
-                                        AutoResizeText(
-                                            text = cellValue,
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontFamily = if (isNull) FontFamily.Monospace else FontFamily.Default,
-                                                lineHeight = 15.sp
-                                            ),
-                                            color = if (isNull) {
-                                                MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                                            } else {
-                                                MaterialTheme.colorScheme.onSurface
-                                            },
-                                            maxLines = 3,
-                                            minFontSize = 8.5.sp,
-                                            targetFontSize = 12.sp
-                                        )
+                                        ) {
+                                            AutoResizeText(
+                                                text = cellValue,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    fontFamily = if (isNull) FontFamily.Monospace else FontFamily.Default,
+                                                    lineHeight = 15.sp
+                                                ),
+                                                color = if (isNull) {
+                                                    MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurface
+                                                },
+                                                maxLines = 3,
+                                                minFontSize = 8.5.sp,
+                                                targetFontSize = 12.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -360,43 +552,136 @@ fun SqlResultTable(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+
+            // Barra inferior interactiva: Paginación + Selector de tamaño de página + Resumen
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Selector de filas por página: [10] [25] [50] [Todo]
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Ver:",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    val pageSizes = listOf(10, 25, 50, 0)
+                    pageSizes.forEach { size ->
+                        val isSelected = pageSize == size
+                        val label = if (size == 0) "Todo" else "$size"
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(
+                                0.8.dp,
+                                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                            ),
+                            modifier = Modifier
+                                .clickable { pageSize = size }
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                ),
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Controles de cambio de página: [◀] Pág X de Y [▶]
+                if (pageSize > 0 && totalPages > 1) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        IconButton(
+                            onClick = { if (safeCurrentPage > 0) currentPage = safeCurrentPage - 1 },
+                            enabled = safeCurrentPage > 0,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = "Página anterior",
+                                modifier = Modifier.size(15.dp),
+                                tint = if (safeCurrentPage > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                            )
+                        }
+
+                        Text(
+                            text = "${safeCurrentPage + 1} / $totalPages",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        IconButton(
+                            onClick = { if (safeCurrentPage < totalPages - 1) currentPage = safeCurrentPage + 1 },
+                            enabled = safeCurrentPage < totalPages - 1,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowForward,
+                                contentDescription = "Página siguiente",
+                                modifier = Modifier.size(15.dp),
+                                tint = if (safeCurrentPage < totalPages - 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Fila de resumen de conteo y ayuda
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val startRow = if (totalRows == 0) 0 else (safeCurrentPage * pageSize) + 1
+                val endRow = if (pageSize <= 0) totalRows else minOf((safeCurrentPage + 1) * pageSize, totalRows)
+
+                val summaryText = if (pageSize <= 0 || totalRows <= pageSize) {
+                    "$totalRows filas • ${result.columns.size} col"
+                } else {
+                    "Filas $startRow–$endRow de $totalRows • ${result.columns.size} col"
+                }
+
                 AutoResizeText(
-                    text = "${filteredRows.size} de ${result.rows.size} filas • ${result.columns.size} col",
+                    text = summaryText,
                     style = MaterialTheme.typography.bodySmall,
-                    targetFontSize = 11.sp,
-                    minFontSize = 9.sp,
+                    targetFontSize = 10.5.sp,
+                    minFontSize = 8.5.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .padding(end = 8.dp)
+                    modifier = Modifier.weight(1f, fill = false)
                 )
 
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(6.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AutoResizeText(
-                            text = "↔ Deslizar columnas",
-                            style = MaterialTheme.typography.labelSmall,
-                            targetFontSize = 10.sp,
-                            minFontSize = 8.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = "↔ Deslizar • Tocar celda para copiar",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
                 }
             }
         }
