@@ -234,9 +234,9 @@ fun DesignerScreen(
                         val strokeColor = relationColors[colorIdx % relationColors.size]
                         colorIdx++
 
-                        // From center-right of source table to center-left of target table
-                        val cardWidthPx = 250.dp.toPx()
-                        val cardHeightPx = 150.dp.toPx()
+                        // From center of source table to center of target table
+                        val cardWidthPx = 320.dp.toPx()
+                        val cardHeightPx = 160.dp.toPx()
 
                         val startX = fromPos.x + (cardWidthPx / 2f)
                         val startY = fromPos.y + (cardHeightPx / 2f)
