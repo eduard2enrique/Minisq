@@ -5,8 +5,11 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,10 +29,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.Functions
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.TableRows
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -44,7 +49,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,6 +66,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.example.data.QueryReportHelper
+import com.example.data.ReportContentMode
+import com.example.data.ReportTextFormat
 import com.example.model.SqlExecutionResult
 import java.util.Locale
 
@@ -73,22 +83,48 @@ fun QueryReportDialog(
         QueryReportHelper.analyzeAndBuildReport(result, activeDbName)
     }
 
-    fun shareReport() {
+    var contentMode by remember { mutableStateOf(ReportContentMode.FULL_DETAILS) }
+    var textFormat by remember { mutableStateOf(ReportTextFormat.RICH_TEXT) }
+    var includeAllRows by remember { mutableStateOf(false) }
+
+    val generatedText = remember(reportData, contentMode, textFormat, includeAllRows) {
+        QueryReportHelper.buildFormattedReport(
+            reportData = reportData,
+            mode = contentMode,
+            format = textFormat,
+            includeAllRows = includeAllRows
+        )
+    }
+
+    fun shareReport(preferWhatsApp: Boolean) {
         val sendIntent = Intent().apply {
             action = Intent.ACTION_SEND
-            putExtra(Intent.EXTRA_TEXT, reportData.formattedTextReport)
+            putExtra(Intent.EXTRA_TEXT, generatedText)
             putExtra(Intent.EXTRA_SUBJECT, "Informe de Consulta SQL - ${reportData.dbName}")
             type = "text/plain"
+            if (preferWhatsApp) {
+                setPackage("com.whatsapp")
+            }
         }
-        val shareIntent = Intent.createChooser(sendIntent, "Compartir informe de consulta")
-        context.startActivity(shareIntent)
+        try {
+            if (preferWhatsApp) {
+                context.startActivity(sendIntent)
+            } else {
+                val shareIntent = Intent.createChooser(sendIntent, "Compartir informe de consulta")
+                context.startActivity(shareIntent)
+            }
+        } catch (_: Exception) {
+            val fallbackIntent = Intent.createChooser(sendIntent.apply { setPackage(null) }, "Compartir informe de consulta")
+            context.startActivity(fallbackIntent)
+        }
     }
 
     fun copyReportToClipboard() {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText("Informe SQL", reportData.formattedTextReport)
+        val clip = ClipData.newPlainText("Informe SQL", generatedText)
         clipboard.setPrimaryClip(clip)
-        Toast.makeText(context, "Informe copiado al portapapeles", Toast.LENGTH_SHORT).show()
+        val modeLabel = if (contentMode == ReportContentMode.DATA_ONLY) "Datos" else "Informe completo"
+        Toast.makeText(context, "$modeLabel copiado al portapapeles", Toast.LENGTH_SHORT).show()
     }
 
     Dialog(
@@ -98,7 +134,7 @@ fun QueryReportDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.88f)
+                .fillMaxHeight(0.90f)
                 .clip(RoundedCornerShape(24.dp))
                 .testTag("query_report_dialog"),
             color = MaterialTheme.colorScheme.surface,
@@ -164,7 +200,117 @@ fun QueryReportDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Selectores de Contenido (Detalles vs Solo Datos) y Formato (Texto vs WhatsApp)
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.18f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Fila 1: Qué incluir (Detalles completos vs Solo Datos)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Contenido:",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.width(68.dp)
+                            )
+
+                            ReportOptionPill(
+                                label = "Detalles (SQL + Datos)",
+                                selected = contentMode == ReportContentMode.FULL_DETAILS,
+                                icon = Icons.Outlined.Description,
+                                onClick = { contentMode = ReportContentMode.FULL_DETAILS },
+                                modifier = Modifier.weight(1.25f).testTag("report_mode_details")
+                            )
+
+                            ReportOptionPill(
+                                label = "Solo Datos",
+                                selected = contentMode == ReportContentMode.DATA_ONLY,
+                                icon = Icons.Outlined.TableChart,
+                                onClick = { contentMode = ReportContentMode.DATA_ONLY },
+                                modifier = Modifier.weight(0.9f).testTag("report_mode_data")
+                            )
+                        }
+
+                        // Fila 2: Formato de salida (Texto Enriquecido vs WhatsApp)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Formato:",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.width(68.dp)
+                            )
+
+                            ReportOptionPill(
+                                label = "Texto tabla (.txt)",
+                                selected = textFormat == ReportTextFormat.RICH_TEXT,
+                                icon = null,
+                                onClick = { textFormat = ReportTextFormat.RICH_TEXT },
+                                modifier = Modifier.weight(1f).testTag("report_format_richtext")
+                            )
+
+                            ReportOptionPill(
+                                label = "WhatsApp",
+                                selected = textFormat == ReportTextFormat.WHATSAPP,
+                                icon = null,
+                                onClick = { textFormat = ReportTextFormat.WHATSAPP },
+                                modifier = Modifier.weight(1f).testTag("report_format_whatsapp")
+                            )
+                        }
+
+                        // Fila 3 (si hay más de 100 filas): Límite de filas
+                        if (reportData.totalRows > 100) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Filas:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.width(68.dp)
+                                )
+
+                                ReportOptionPill(
+                                    label = "Primeras 100",
+                                    selected = !includeAllRows,
+                                    icon = null,
+                                    onClick = { includeAllRows = false },
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                ReportOptionPill(
+                                    label = "Todas (${reportData.totalRows})",
+                                    selected = includeAllRows,
+                                    icon = null,
+                                    onClick = { includeAllRows = true },
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 // Scrollable content
                 Column(
@@ -272,91 +418,93 @@ fun QueryReportDialog(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Executed SQL Query
-                    Text(
-                        text = "Consulta SQL ejecutada",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                            .border(
-                                1.dp,
-                                MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                                RoundedCornerShape(10.dp)
-                            )
-                            .padding(10.dp)
-                    ) {
-                        Text(
-                            text = reportData.querySql.ifBlank { "-- (Consulta de selección)" },
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    // Column Statistics (if numeric columns exist)
-                    val numericStats = reportData.columnStats.filter { it.isNumeric }
-                    if (numericStats.isNotEmpty()) {
+                    if (contentMode == ReportContentMode.FULL_DETAILS) {
                         Spacer(modifier = Modifier.height(14.dp))
+
+                        // Executed SQL Query
                         Text(
-                            text = "Análisis Estadístico Numérico",
+                            text = "Consulta SQL ejecutada",
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                                .border(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                text = reportData.querySql.ifBlank { "-- (Consulta de selección)" },
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
 
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            numericStats.forEach { stat ->
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                                    ),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp)) {
-                                        Text(
-                                            text = stat.name,
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Column {
-                                                Text(
-                                                    text = "Promedio: ${String.format(Locale.US, "%.2f", stat.avg ?: 0.0)}",
-                                                    style = MaterialTheme.typography.bodySmall
-                                                )
-                                                Text(
-                                                    text = "Suma Total: ${String.format(Locale.US, "%.2f", stat.sum ?: 0.0)}",
-                                                    style = MaterialTheme.typography.bodySmall
-                                                )
-                                            }
-                                            Column {
-                                                Text(
-                                                    text = "Mín: ${String.format(Locale.US, "%.2f", stat.min ?: 0.0)}",
-                                                    style = MaterialTheme.typography.bodySmall
-                                                )
-                                                Text(
-                                                    text = "Máx: ${String.format(Locale.US, "%.2f", stat.max ?: 0.0)}",
-                                                    style = MaterialTheme.typography.bodySmall
-                                                )
+                        // Column Statistics (if numeric columns exist)
+                        val numericStats = reportData.columnStats.filter { it.isNumeric }
+                        if (numericStats.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = "Análisis Estadístico Numérico",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                numericStats.forEach { stat ->
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                        ),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Text(
+                                                text = stat.name,
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Column {
+                                                    Text(
+                                                        text = "Promedio: ${String.format(Locale.US, "%.2f", stat.avg ?: 0.0)}",
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                    Text(
+                                                        text = "Suma Total: ${String.format(Locale.US, "%.2f", stat.sum ?: 0.0)}",
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
+                                                Column {
+                                                    Text(
+                                                        text = "Mín: ${String.format(Locale.US, "%.2f", stat.min ?: 0.0)}",
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                    Text(
+                                                        text = "Máx: ${String.format(Locale.US, "%.2f", stat.max ?: 0.0)}",
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -367,13 +515,28 @@ fun QueryReportDialog(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Text report preview
-                    Text(
-                        text = "Vista previa del Informe generado",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    // Text report preview with horizontal scroll so aligned Unicode boxes never wrap awkwardly
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (contentMode == ReportContentMode.DATA_ONLY) {
+                                "Vista previa (Solo Datos)"
+                            } else {
+                                "Vista previa del Informe generado"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "↔ Deslizar",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(6.dp))
                     Box(
                         modifier = Modifier
@@ -385,16 +548,18 @@ fun QueryReportDialog(
                                 MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
                                 RoundedCornerShape(10.dp)
                             )
+                            .horizontalScroll(rememberScrollState())
                             .padding(10.dp)
                     ) {
                         Text(
-                            text = reportData.formattedTextReport,
+                            text = generatedText,
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp,
                                 lineHeight = 15.sp
                             ),
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            softWrap = false
                         )
                     }
                 }
@@ -413,7 +578,7 @@ fun QueryReportDialog(
                     OutlinedButton(
                         onClick = onDismiss,
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(0.9f)
                             .heightIn(min = 44.dp)
                             .testTag("bottom_close_report_btn"),
                         shape = RoundedCornerShape(12.dp),
@@ -431,9 +596,9 @@ fun QueryReportDialog(
                     }
 
                     FilledTonalButton(
-                        onClick = { shareReport() },
+                        onClick = { shareReport(preferWhatsApp = textFormat == ReportTextFormat.WHATSAPP) },
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(1.1f)
                             .heightIn(min = 44.dp)
                             .testTag("share_report_btn"),
                         shape = RoundedCornerShape(12.dp),
@@ -442,7 +607,7 @@ fun QueryReportDialog(
                         Icon(imageVector = Icons.Outlined.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Compartir",
+                            text = if (textFormat == ReportTextFormat.WHATSAPP) "WhatsApp" else "Compartir",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
@@ -452,10 +617,10 @@ fun QueryReportDialog(
 
                     Button(
                         onClick = {
-                            onSaveReportFile(reportData.formattedTextReport)
+                            onSaveReportFile(generatedText)
                         },
                         modifier = Modifier
-                            .weight(1.1f)
+                            .weight(1.05f)
                             .heightIn(min = 44.dp)
                             .testTag("save_report_file_btn"),
                         shape = RoundedCornerShape(12.dp),
@@ -492,6 +657,53 @@ fun QueryReportDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ReportOptionPill(
+    label: String,
+    selected: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(9.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = if (selected) 1.dp else 0.8.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+        ),
+        modifier = modifier
+            .heightIn(min = 32.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(13.dp),
+                    tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+            AutoResizeText(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                minFontSize = 8.5.sp,
+                targetFontSize = 11.sp
+            )
         }
     }
 }

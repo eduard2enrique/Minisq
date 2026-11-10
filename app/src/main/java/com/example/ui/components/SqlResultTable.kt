@@ -2,9 +2,11 @@ package com.example.ui.components
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,23 +25,31 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Sort
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -52,8 +62,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -62,10 +74,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.SqlExecutionResult
 
+private data class InspectedCellData(
+    val rowNumber: Int,
+    val columnName: String,
+    val cellValue: String,
+    val rowValues: List<String>
+)
+
 /**
  * DataGrid interactivo con soporte de ordenamiento por columnas, paginación configurable,
- * filtro en tiempo real, anchos de columna adaptativos y copiado rápido de celdas.
+ * filtro en tiempo real, anchos de columna adaptativos y copiado seguro (pulsación larga o visor).
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SqlResultTable(
     result: SqlExecutionResult,
@@ -76,7 +96,11 @@ fun SqlResultTable(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val hapticFeedback = LocalHapticFeedback.current
     var searchQuery by remember { mutableStateOf("") }
+
+    // Estado de celda inspeccionada al tocar (no copia por accidente)
+    var inspectedCell by remember { mutableStateOf<InspectedCellData?>(null) }
 
     // Estado del ordenamiento por columna
     var sortColumnIndex by remember { mutableStateOf<Int?>(null) }
@@ -136,7 +160,6 @@ fun SqlResultTable(
         else ((totalRows + pageSize - 1) / pageSize).coerceAtLeast(1)
     }
 
-    // Asegurar que currentPage no exceda totalPages
     val safeCurrentPage = currentPage.coerceIn(0, (totalPages - 1).coerceAtLeast(0))
 
     val displayedRows by remember(sortedRows, safeCurrentPage, pageSize) {
@@ -419,7 +442,6 @@ fun SqlResultTable(
                                             if (sortAscending) {
                                                 sortAscending = false
                                             } else {
-                                                // Si ya estaba descendente, reiniciar a sin ordenar
                                                 sortColumnIndex = null
                                                 sortAscending = true
                                             }
@@ -508,7 +530,7 @@ fun SqlResultTable(
                                             .padding(horizontal = 4.dp)
                                     )
 
-                                    // Celdas de la fila
+                                    // Celdas de la fila: Toque simple = Visor de lectura seguro; Pulsación larga = Copiar al portapapeles
                                     row.forEachIndexed { colIdx, cellValue ->
                                         val colWidth = columnWidths.getOrElse(colIdx) { 130.dp }
                                         val isNull = cellValue == "NULL"
@@ -517,15 +539,27 @@ fun SqlResultTable(
                                         Box(
                                             modifier = Modifier
                                                 .width(colWidth)
-                                                .padding(horizontal = 6.dp)
-                                                .clickable {
-                                                    clipboardManager.setText(AnnotatedString(cellValue))
-                                                    Toast.makeText(
-                                                        context,
-                                                        "Copiado ($colName): $cellValue",
-                                                        Toast.LENGTH_SHORT
-                                                    ).show()
-                                                }
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .combinedClickable(
+                                                    onClick = {
+                                                        inspectedCell = InspectedCellData(
+                                                            rowNumber = globalIndex + 1,
+                                                            columnName = colName,
+                                                            cellValue = cellValue,
+                                                            rowValues = row
+                                                        )
+                                                    },
+                                                    onLongClick = {
+                                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        clipboardManager.setText(AnnotatedString(cellValue))
+                                                        Toast.makeText(
+                                                            context,
+                                                            "Copiado ($colName): $cellValue",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                )
+                                                .padding(horizontal = 6.dp, vertical = 2.dp)
                                         ) {
                                             AutoResizeText(
                                                 text = cellValue,
@@ -553,13 +587,12 @@ fun SqlResultTable(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Barra inferior interactiva: Paginación + Selector de tamaño de página + Resumen
+            // Barra inferior interactiva: Paginación + Selector de tamaño de página
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Selector de filas por página: [10] [25] [50] [Todo]
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -582,8 +615,7 @@ fun SqlResultTable(
                                 0.8.dp,
                                 if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
                             ),
-                            modifier = Modifier
-                                .clickable { pageSize = size }
+                            modifier = Modifier.clickable { pageSize = size }
                         ) {
                             Text(
                                 text = label,
@@ -598,7 +630,6 @@ fun SqlResultTable(
                     }
                 }
 
-                // Controles de cambio de página: [◀] Pág X de Y [▶]
                 if (pageSize > 0 && totalPages > 1) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -644,7 +675,7 @@ fun SqlResultTable(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Fila de resumen de conteo y ayuda
+            // Fila de resumen de conteo y guía de gestos seguros
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -677,13 +708,106 @@ fun SqlResultTable(
                     border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
                 ) {
                     Text(
-                        text = "↔ Deslizar • Tocar celda para copiar",
+                        text = "Tocar: ver • Mantener: copiar",
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
         }
+    }
+
+    // Visor seguro de celda (solo lectura hasta confirmar copia)
+    inspectedCell?.let { cell ->
+        AlertDialog(
+            onDismissRequest = { inspectedCell = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.Visibility,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Column {
+                    Text(
+                        text = cell.columnName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Fila #${cell.rowNumber}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 64.dp, max = 240.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            SelectionContainer {
+                                Text(
+                                    text = cell.cellValue,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = if (cell.cellValue == "NULL") FontFamily.Monospace else FontFamily.Default
+                                    ),
+                                    color = if (cell.cellValue == "NULL") MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            val rowFormatted = result.columns.zip(cell.rowValues)
+                                .joinToString(" | ") { (col, v) -> "$col: $v" }
+                            clipboardManager.setText(AnnotatedString(rowFormatted))
+                            Toast.makeText(context, "Fila #${cell.rowNumber} copiada", Toast.LENGTH_SHORT).show()
+                            inspectedCell = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(imageVector = Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Copiar fila completa")
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(cell.cellValue))
+                        Toast.makeText(context, "Valor copiado al portapapeles", Toast.LENGTH_SHORT).show()
+                        inspectedCell = null
+                    },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(imageVector = Icons.Outlined.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Copiar valor")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { inspectedCell = null }) {
+                    Text("Cerrar")
+                }
+            }
+        )
     }
 }

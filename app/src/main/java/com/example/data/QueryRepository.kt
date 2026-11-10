@@ -304,7 +304,7 @@ class QueryRepository(context: Context) {
                 title = "Actualizar Registro si ya Existe (INSERT OR REPLACE)",
                 category = "Solución de Errores",
                 description = "Actualiza los datos del registro si la clave primaria ya existía en la base.",
-                sql = "-- Si existe el id=1, sobreescribe sus datos (UPSERT)\nINSERT OR REPLACE INTO estudiantes (\n    id_estudiante, carnet_identidad, carnet_preuniversitario, nombre_completo, sexo,\n    via_ingreso, indice_academico, provincia, municipio, centro_estudio\n) VALUES (\n    1, '95010112345', '2026-001', 'Melisa María Fat Tamayo Actualizada', 'F',\n    'Preuniversitario', 99.00, 'Holguín', 'Holguín', 'IPVCE José Martí Pérez'\n);"
+                sql = "-- Si el id=99 ya existe, actualiza sus datos sin afectar claves foráneas (UPSERT)\nINSERT OR REPLACE INTO estudiantes (\n    id_estudiante, carnet_identidad, carnet_preuniversitario, nombre_completo, sexo,\n    via_ingreso, indice_academico, provincia, municipio, centro_estudio\n) VALUES (\n    99, '95099999999', '2026-099', 'Melisa María Fat Tamayo Actualizada', 'F',\n    'Preuniversitario', 99.00, 'Holguín', 'Holguín', 'IPVCE José Martí Pérez'\n);"
             ),
             SqlExample(
                 title = "Creación Segura de Tablas (CREATE TABLE IF NOT EXISTS)",
@@ -380,35 +380,35 @@ class QueryRepository(context: Context) {
                     title = "1. Provincias por Población (ORDER BY)",
                     category = "Geografía Básica",
                     description = "Ranking de provincias cubanas ordenadas de mayor a menor población.",
-                    sql = "SELECT nombre, capital, region, poblacion\nFROM provincias\nORDER BY poblacion DESC;"
+                    sql = "SELECT nombre, capital, region, poblacion, area_km2\nFROM provincias\nORDER BY poblacion DESC;"
                 ),
                 SqlExample(
-                    title = "2. Municipios de la Provincia de Holguín",
+                    title = "2. Atractivos por Provincia (JOIN)",
                     category = "Geografía Básica",
-                    description = "Filtro de municipios correspondientes a la provincia de Holguín.",
-                    sql = "SELECT m.nombre AS Municipio, p.nombre AS Provincia, p.region\nFROM municipios m\nJOIN provincias p ON m.provincia_id = p.id\nWHERE p.nombre = 'Holguín'\nORDER BY m.nombre ASC;"
+                    description = "Cruza cada lugar de interés con su provincia y región.",
+                    sql = "SELECT l.nombre AS Lugar, p.nombre AS Provincia, p.region, l.tipo, l.patrimonio_unesco\nFROM lugares_interes l\nJOIN provincias p ON l.provincia_id = p.id\nORDER BY p.nombre ASC, l.nombre ASC;"
                 ),
                 SqlExample(
-                    title = "3. Conteo de Municipios por Provincia (GROUP BY)",
+                    title = "3. Conteo de Atractivos por Provincia (GROUP BY)",
                     category = "Agrupaciones y Resumen",
-                    description = "Cantidad total de municipios en cada provincia de Cuba.",
-                    sql = "SELECT p.nombre AS Provincia, COUNT(m.id) AS Cantidad_Municipios\nFROM provincias p\nLEFT JOIN municipios m ON p.id = m.provincia_id\nGROUP BY p.id, p.nombre\nORDER BY Cantidad_Municipios DESC;"
+                    description = "Cantidad de lugares de interés registrados por provincia.",
+                    sql = "SELECT p.nombre AS Provincia, COUNT(l.id) AS Total_Atractivos\nFROM provincias p\nLEFT JOIN lugares_interes l ON p.id = l.provincia_id\nGROUP BY p.id, p.nombre\nORDER BY Total_Atractivos DESC;"
                 ),
                 SqlExample(
-                    title = "4. Lugares de Interés Histórico y Natural (LIKE)",
+                    title = "4. Sitios Patrimonio UNESCO en Cuba",
                     category = "Filtros y Búsqueda",
-                    description = "Sitios patrimoniales y parques naturales destacados.",
-                    sql = "SELECT nombre, tipo, descripcion\nFROM lugares_interes\nWHERE tipo IN ('Natural', 'Histórico')\nORDER BY tipo, nombre;"
+                    description = "Lugares declarados Patrimonio de la Humanidad en Cuba.",
+                    sql = "SELECT l.nombre, l.tipo, p.nombre AS Provincia\nFROM lugares_interes l\nJOIN provincias p ON l.provincia_id = p.id\nWHERE l.patrimonio_unesco = 1\nORDER BY p.nombre, l.nombre;"
                 ),
                 SqlExample(
-                    title = "Evitar Duplicados con INSERT OR IGNORE",
-                    category = "Solución de Errores",
-                    description = "Inserta un lugar de interés sin fallar si ya existía su clave única.",
-                    sql = "INSERT OR IGNORE INTO lugares_interes (nombre, provincia_id, tipo, descripcion)\nVALUES ('Salto del Guayabo', 10, 'Natural', 'Una de las mayores cascadas de Cuba en Mayarí, Holguín.');"
+                    title = "5. Platos Tradicionales Cubanos",
+                    category = "Cultura y Tradición",
+                    description = "Catálogo gastronómico por región de origen e ingrediente principal.",
+                    sql = "SELECT nombre, tipo, ingrediente_principal, region_origen\nFROM platos_tradicionales\nORDER BY region_origen, nombre;"
                 )
             )
 
-            lower.contains("tienda") || lower.contains("comercial") -> listOf(
+            lower.contains("tienda") || lower.contains("comercial") || lower.contains("sample") -> listOf(
                 SqlExample(
                     title = "1. Productos con Stock Bajo (< 20 unidades)",
                     category = "Gestión Comercial",
@@ -431,13 +431,40 @@ class QueryRepository(context: Context) {
                     title = "4. Detalle de Pedidos con Productos (JOIN Múltiple)",
                     category = "Consultas Avanzadas",
                     description = "Relaciona cada pedido con el cliente y los productos despachados.",
-                    sql = "SELECT p.id AS Pedido, c.nombre AS Cliente, pr.nombre AS Producto, dp.cantidad, dp.precio_unitario\nFROM pedidos p\nJOIN clientes c ON p.cliente_id = c.id\nJOIN detalles_pedidos dp ON p.id = dp.pedido_id\nJOIN productos pr ON dp.producto_id = pr.id\nLIMIT 20;"
+                    sql = "SELECT p.id AS Pedido, c.nombre AS Cliente, pr.nombre AS Producto, dp.cantidad, dp.precio_unitario\nFROM pedidos p\nJOIN clientes c ON p.cliente_id = c.id\nJOIN detalles_pedido dp ON p.id = dp.pedido_id\nJOIN productos pr ON dp.producto_id = pr.id\nLIMIT 20;"
                 ),
                 SqlExample(
                     title = "Actualización Segura (UPDATE con WHERE)",
                     category = "Solución de Errores",
                     description = "Siempre usa WHERE en UPDATE para no alterar toda la tabla por error.",
                     sql = "-- Siempre especifica el id para no modificar todos los productos\nUPDATE productos\nSET stock = stock + 10\nWHERE id = 1;"
+                )
+            )
+
+            lower.contains("clinica") || lower.contains("clinic") -> listOf(
+                SqlExample(
+                    title = "1. Agenda Completa de Citas Médicas (JOIN)",
+                    category = "Gestión Clínica",
+                    description = "Muestra cada cita con los datos del paciente y del médico especialista.",
+                    sql = "SELECT c.id AS Cita, p.nombre AS Paciente, p.edad, m.nombre AS Medico, m.especialidad, c.fecha, c.motivo, c.costo\nFROM citas c\nJOIN pacientes p ON c.paciente_id = p.id\nJOIN medicos m ON c.medico_id = m.id\nORDER BY c.fecha DESC;"
+                ),
+                SqlExample(
+                    title = "2. Recaudación por Especialidad (GROUP BY)",
+                    category = "Reportes Médicos",
+                    description = "Cantidad de citas e ingresos acumulados por médico y especialidad.",
+                    sql = "SELECT m.nombre AS Medico, m.especialidad, COUNT(c.id) AS Total_Citas, ROUND(COALESCE(SUM(c.costo), 0), 2) AS Ingresos\nFROM medicos m\nLEFT JOIN citas c ON m.id = c.medico_id\nGROUP BY m.id, m.nombre, m.especialidad\nORDER BY Total_Citas DESC;"
+                ),
+                SqlExample(
+                    title = "3. Directorio de Pacientes y Grupos Sanguíneos",
+                    category = "Pacientes",
+                    description = "Listado de pacientes ordenados por edad y ciudad.",
+                    sql = "SELECT id, nombre, edad, ciudad, grupo_sanguineo\nFROM pacientes\nORDER BY edad DESC;"
+                ),
+                SqlExample(
+                    title = "4. Registrar Nueva Cita Médica (INSERT)",
+                    category = "Solución de Errores",
+                    description = "Inserta una cita referenciando un paciente y un médico existentes.",
+                    sql = "INSERT INTO citas (paciente_id, medico_id, fecha, motivo, costo)\nVALUES (1, 3, '2026-11-28', 'Control clínico general', 60.0);"
                 )
             )
 
@@ -463,8 +490,53 @@ class QueryRepository(context: Context) {
                 SqlExample(
                     title = "Clave Foránea Correcta",
                     category = "Solución de Errores",
-                    description = "Inserción garantizando existencia previa del profesor padre.",
-                    sql = "INSERT INTO materias (codigo, nombre, profesor_id, creditos)\nVALUES ('IA-401', 'Aprendizaje Automático', 1, 4);"
+                    description = "Inserción garantizando existencia previa del profesor padre y semestre obligatorio.",
+                    sql = "INSERT OR IGNORE INTO materias (codigo, nombre, creditos, semestre, profesor_id)\nVALUES ('IA-401', 'Aprendizaje Automático', 4, 4, 1);"
+                )
+            )
+
+            lower.contains("ecommerce") -> listOf(
+                SqlExample(
+                    title = "1. Catálogo de Artículos por Categoría (JOIN)",
+                    category = "Comercio Electrónico",
+                    description = "Lista los artículos disponibles junto con su categoría.",
+                    sql = "SELECT a.id, a.nombre AS Articulo, c.nombre AS Categoria, a.precio\nFROM articulos a\nJOIN categorias c ON a.categoria_id = c.id\nORDER BY a.precio DESC;"
+                ),
+                SqlExample(
+                    title = "2. Usuarios Activos por Rol",
+                    category = "Comercio Electrónico",
+                    description = "Muestra los usuarios registrados y sus permisos.",
+                    sql = "SELECT id, usuario, rol, activo FROM usuarios ORDER BY id ASC;"
+                )
+            )
+
+            lower.contains("university") || lower.contains("universidad") -> listOf(
+                SqlExample(
+                    title = "1. Calificaciones por Estudiante y Curso (JOIN)",
+                    category = "Universidad",
+                    description = "Combina estudiantes, cursos, profesores y notas.",
+                    sql = "SELECT e.matricula, e.nombre AS Estudiante, c.titulo AS Curso, p.nombre AS Profesor, cal.nota\nFROM calificaciones cal\nJOIN estudiantes e ON cal.estudiante_id = e.id\nJOIN cursos c ON cal.curso_id = c.id\nJOIN profesores p ON c.profesor_id = p.id\nORDER BY cal.nota DESC;"
+                ),
+                SqlExample(
+                    title = "2. Promedio General de Calificaciones",
+                    category = "Universidad",
+                    description = "Calcula el promedio de notas por curso.",
+                    sql = "SELECT c.titulo AS Curso, COUNT(cal.id) AS Evaluados, ROUND(AVG(cal.nota), 2) AS Promedio\nFROM cursos c\nLEFT JOIN calificaciones cal ON c.id = cal.curso_id\nGROUP BY c.id, c.titulo;"
+                )
+            )
+
+            lower.contains("project") || lower.contains("proyecto") -> listOf(
+                SqlExample(
+                    title = "1. Tareas Asignadas por Proyecto y Responsable (JOIN)",
+                    category = "Gestión de Proyectos",
+                    description = "Visualiza tareas pendientes y completadas junto a su proyecto.",
+                    sql = "SELECT pr.nombre AS Proyecto, t.titulo AS Tarea, t.prioridad, m.nombre AS Responsable, t.completada\nFROM tareas t\nJOIN proyectos pr ON t.proyecto_id = pr.id\nLEFT JOIN miembros m ON t.miembro_id = m.id\nORDER BY t.completada ASC, pr.nombre ASC;"
+                ),
+                SqlExample(
+                    title = "2. Resumen de Presupuesto y Carga de Tareas",
+                    category = "Gestión de Proyectos",
+                    description = "Total de tareas registradas por proyecto.",
+                    sql = "SELECT pr.nombre, pr.estado, pr.presupuesto, COUNT(t.id) AS Total_Tareas\nFROM proyectos pr\nLEFT JOIN tareas t ON pr.id = t.proyecto_id\nGROUP BY pr.id, pr.nombre;"
                 )
             )
 

@@ -57,4 +57,11 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::databaseManager.isInitialized) {
+            databaseManager.closeDatabase()
+        }
+    }
 }

@@ -546,6 +546,29 @@ class ExampleRobolectricTest {
     assertTrue(text.contains("SELECT id, nombre, salario FROM empleados"))
     assertTrue(text.contains("RESUMEN ESTADÍSTICO DE COLUMNAS"))
     assertTrue(text.contains("Ana Martínez"))
+    assertTrue(text.contains("┌"))
+    assertTrue(text.contains("└"))
+
+    // Check DATA_ONLY mode excludes SQL & statistical summary
+    val dataOnlyText = com.example.data.QueryReportHelper.buildFormattedReport(
+      reportData = reportData,
+      mode = com.example.data.ReportContentMode.DATA_ONLY,
+      format = com.example.data.ReportTextFormat.RICH_TEXT
+    )
+    assertTrue(dataOnlyText.contains("DATOS DE CONSULTA"))
+    assertTrue(dataOnlyText.contains("Ana Martínez"))
+    org.junit.Assert.assertFalse(dataOnlyText.contains("RESUMEN ESTADÍSTICO DE COLUMNAS"))
+    org.junit.Assert.assertFalse(dataOnlyText.contains("SELECT id, nombre, salario"))
+
+    // Check WHATSAPP format wraps SQL and data table cleanly
+    val whatsappFull = com.example.data.QueryReportHelper.buildFormattedReport(
+      reportData = reportData,
+      mode = com.example.data.ReportContentMode.FULL_DETAILS,
+      format = com.example.data.ReportTextFormat.WHATSAPP
+    )
+    assertTrue(whatsappFull.contains("*INFORME DE CONSULTA SQL*"))
+    assertTrue(whatsappFull.contains("```sql"))
+    assertTrue(whatsappFull.contains("Ana Martínez"))
   }
 
   @Test
@@ -797,6 +820,143 @@ class ExampleRobolectricTest {
     val restoredCount = dbManager.executeSql("SELECT COUNT(*) FROM estudiantes;")
     assertTrue(restoredCount.isSuccess)
     assertEquals("12", restoredCount.rows[0][0])
+    dbManager.closeDatabase()
+  }
+
+  @Test
+  fun `definitive audit - all databases, quick queries, and educational examples execute with zero errors`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val dbManager = DatabaseManager(context)
+    val repo = com.example.data.QueryRepository(context)
+
+    // Create additional didactic DBs to test all 9 templates
+    assertTrue(dbManager.createNewDatabase("clinica_salud", "clinic"))
+    assertTrue(dbManager.createNewDatabase("ecommerce_test", "ecommerce"))
+    assertTrue(dbManager.createNewDatabase("university_test", "university"))
+    assertTrue(dbManager.createNewDatabase("projects_test", "projects"))
+
+    val dbsToVerify = listOf(
+      "otorgamiento_carreras.db",
+      "facultad_ciencias.db",
+      "cuba_geografia.db",
+      "tienda_comercial.db",
+      "secretaria_escolar.db",
+      "clinica_salud.db",
+      "ecommerce_test.db",
+      "university_test.db",
+      "projects_test.db"
+    )
+
+    for (dbName in dbsToVerify) {
+      dbManager.switchDatabase(dbName)
+      val tables = dbManager.getTables()
+      assertTrue("DB $dbName must have tables", tables.isNotEmpty())
+      for (t in tables) {
+        assertTrue("Table ${t.name} in $dbName should be seeded with rows", t.rowCount > 0)
+      }
+      val tableNames = tables.map { it.name }
+
+      // 1. Default query for database
+      val defaultSql = com.example.ui.screens.getDefaultQueryForDatabase(dbName, tableNames)
+      val defaultRes = dbManager.executeSql(defaultSql)
+      assertTrue("Default query failed for $dbName: ${defaultRes.message}\nSQL:\n$defaultSql", defaultRes.isSuccess)
+
+      // 2. All Quick Snippets (select, join, group, insert, create) - run twice to verify idempotency/uniqueness!
+      val snippetTypes = listOf("select", "join", "group", "insert", "create")
+      for (snippetType in snippetTypes) {
+        val snippetSql1 = com.example.ui.screens.getSnippetForDatabase(snippetType, dbName, tableNames)
+        val snippetRes1 = dbManager.executeSql(snippetSql1)
+        assertTrue(
+          "Quick snippet '$snippetType' (1st run) failed on $dbName: ${snippetRes1.message}\nSQL:\n$snippetSql1",
+          snippetRes1.isSuccess
+        )
+        val snippetSql2 = com.example.ui.screens.getSnippetForDatabase(snippetType, dbName, tableNames)
+        val snippetRes2 = dbManager.executeSql(snippetSql2)
+        assertTrue(
+          "Quick snippet '$snippetType' (2nd run) failed on $dbName: ${snippetRes2.message}\nSQL:\n$snippetSql2",
+          snippetRes2.isSuccess
+        )
+      }
+
+      // 3. All Educational Examples for that DB
+      val examples = repo.getEducationalExamplesForDb(dbName)
+      assertTrue("DB $dbName should have educational examples", examples.isNotEmpty())
+      for (ex in examples) {
+        val exRes = dbManager.executeSql(ex.sql)
+        assertTrue(
+          "Example '${ex.title}' failed on $dbName: ${exRes.message}\nSQL:\n${ex.sql}",
+          exRes.isSuccess
+        )
+      }
+    }
+
+    // 4. Also verify empty/blank database default & quick CREATE snippet
+    assertTrue(dbManager.createNewDatabase("vacia_audit", "empty"))
+    dbManager.switchDatabase("vacia_audit.db")
+    val emptyCreateSql = com.example.ui.screens.getSnippetForDatabase("create", "vacia_audit.db", emptyList())
+    assertTrue(dbManager.executeSql(emptyCreateSql).isSuccess)
+    dbManager.deleteDatabase("vacia_audit.db")
+    dbManager.closeDatabase()
+  }
+
+  @Test
+  fun `definitive audit - storage export, sql dump, blank name guards, and history cap`() = runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val dbManager = DatabaseManager(context)
+    val repo = com.example.data.QueryRepository(context)
+
+    // 1. Blank or symbol-only DB names must be rejected safely
+    org.junit.Assert.assertFalse(dbManager.createNewDatabase("", "empty"))
+    org.junit.Assert.assertFalse(dbManager.createNewDatabase("   ", "empty"))
+    org.junit.Assert.assertFalse(dbManager.createNewDatabase("///...", "empty"))
+    org.junit.Assert.assertFalse(dbManager.createNewDatabase("___", "empty"))
+
+    // 2. Binary .db stream export yields valid SQLite format 3 header
+    dbManager.switchDatabase("tienda_comercial.db")
+    val baos = java.io.ByteArrayOutputStream()
+    val exported = dbManager.exportDatabaseToStream(baos)
+    assertTrue("Binary DB export should succeed", exported)
+    val bytes = baos.toByteArray()
+    assertTrue("Exported DB must be non-empty", bytes.size > 100)
+    val header = String(bytes.copyOfRange(0, 15))
+    assertEquals("SQLite format 3", header)
+
+    // 3. SQL Dump & CSV/JSON export
+    val dump = dbManager.exportDatabaseSqlDump()
+    assertTrue(dump.contains("CREATE TABLE IF NOT EXISTS"))
+    assertTrue(dump.contains("INSERT OR IGNORE INTO"))
+
+    val queryRes = dbManager.executeSql("SELECT id, nombre, email, ciudad, saldo FROM clientes;")
+    assertTrue(queryRes.isSuccess)
+    val csv = dbManager.exportQueryResultCsv(queryRes)
+    assertTrue(csv.contains("id,nombre,email,ciudad,saldo"))
+    val json = dbManager.exportQueryResultJson(queryRes)
+    assertTrue(json.contains("Ana Torres"))
+
+    // 4. Create -> Rename -> Delete lifecycle stability
+    assertTrue(dbManager.createNewDatabase("tmp_audit_db", "clinic"))
+    assertTrue(dbManager.listDatabases().contains("tmp_audit_db.db"))
+    assertTrue(dbManager.renameDatabase("tmp_audit_db.db", "tmp_audit_renamed"))
+    assertTrue(dbManager.listDatabases().contains("tmp_audit_renamed.db"))
+    assertTrue(dbManager.deleteDatabase("tmp_audit_renamed.db"))
+    org.junit.Assert.assertFalse(dbManager.listDatabases().contains("tmp_audit_renamed.db"))
+
+    // 5. History caps at 20 items cleanly
+    repo.clearHistory()
+    for (i in 1..25) {
+      repo.addHistoryItem(
+        com.example.model.QueryHistoryItem(
+          id = "id_$i",
+          sql = "SELECT $i;",
+          isSuccess = true,
+          elapsedMs = 1,
+          rowsCount = 1
+        )
+      )
+    }
+    assertEquals(20, repo.getLast20Queries().size)
+    assertEquals("SELECT 25;", repo.getLast20Queries().first().sql)
+    dbManager.closeDatabase()
   }
 }
 

@@ -309,7 +309,16 @@ object SqlScriptHelper {
             db.beginTransaction()
             for (stmt in statements) {
                 currentStmtText = stmt
-                db.execSQL(stmt)
+                val upperStmt = stmt.uppercase().trimStart()
+                val isReadQuery = upperStmt.startsWith("SELECT") ||
+                    upperStmt.startsWith("WITH") ||
+                    upperStmt.startsWith("EXPLAIN") ||
+                    (upperStmt.startsWith("PRAGMA") && !upperStmt.contains("="))
+                if (isReadQuery) {
+                    db.rawQuery(stmt, null).use { it.moveToFirst() }
+                } else {
+                    db.execSQL(stmt)
+                }
                 executedCount++
             }
             db.setTransactionSuccessful()

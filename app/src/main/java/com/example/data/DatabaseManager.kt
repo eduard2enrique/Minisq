@@ -83,7 +83,7 @@ class DatabaseManager(private val context: Context) {
         }
         val clinicaFile = File(dbDir, "clinica_salud.db")
         val currentClinicaVer = prefs.getInt("clinica_db_ver", 0)
-        val TARGET_CLINICA_VER = 2
+        val TARGET_CLINICA_VER = 3
         if (clinicaFile.exists() && currentClinicaVer < TARGET_CLINICA_VER) {
             clinicaFile.delete()
             createSampleClinic(clinicaFile)
@@ -125,6 +125,14 @@ class DatabaseManager(private val context: Context) {
         }
     }
 
+    @Synchronized
+    fun closeDatabase() {
+        try {
+            activeDatabase?.let { if (it.isOpen) it.close() }
+        } catch (_: Exception) {}
+        activeDatabase = null
+    }
+
     fun getCurrentDbName(): String = currentDbName
 
     fun listDatabases(): List<String> {
@@ -133,8 +141,16 @@ class DatabaseManager(private val context: Context) {
         return if (names.isEmpty()) listOf(currentDbName) else names
     }
 
+    private fun sanitizeDbBaseName(name: String): String? {
+        val trimmed = name.trim().removeSuffix(".db").removeSuffix(".sqlite")
+        if (trimmed.none { it.isLetterOrDigit() }) return null
+        val cleaned = trimmed.replace(Regex("[^a-zA-Z0-9_]"), "_").trim('_')
+        return cleaned.takeIf { it.isNotBlank() }
+    }
+
+    @Synchronized
     fun createNewDatabase(name: String, template: String = "empty"): Boolean {
-        val baseName = name.trim().removeSuffix(".db").removeSuffix(".sqlite").replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val baseName = sanitizeDbBaseName(name) ?: return false
         val dbName = "$baseName.db"
         val file = File(dbDir, dbName)
         if (file.exists()) return false
@@ -151,8 +167,11 @@ class DatabaseManager(private val context: Context) {
             "sample" -> createSampleStore(file)
             else -> {
                 val db = SQLiteDatabase.openOrCreateDatabase(file, null)
-                db.execSQL("PRAGMA foreign_keys = ON;")
-                db.close()
+                try {
+                    db.execSQL("PRAGMA foreign_keys = ON;")
+                } finally {
+                    db.close()
+                }
             }
         }
         prefs.edit().putString("template_$dbName", template).apply()
@@ -162,7 +181,7 @@ class DatabaseManager(private val context: Context) {
 
     @Synchronized
     fun resetDatabase(name: String): Boolean {
-        val baseName = name.trim().removeSuffix(".db").removeSuffix(".sqlite").replace(Regex("[^a-zA-Z0-9_]"), "_")
+        val baseName = sanitizeDbBaseName(name) ?: return false
         val dbName = "$baseName.db"
         val file = File(dbDir, dbName)
         val wasActive = (currentDbName == dbName)
@@ -217,6 +236,7 @@ class DatabaseManager(private val context: Context) {
         return true
     }
 
+    @Synchronized
     fun deleteDatabase(name: String): Boolean {
         val file = File(dbDir, name)
         if (currentDbName == name) {
@@ -240,9 +260,10 @@ class DatabaseManager(private val context: Context) {
         return deleted
     }
 
+    @Synchronized
     fun renameDatabase(oldName: String, newName: String): Boolean {
-        val clean = newName.trim().replace(Regex("[^a-zA-Z0-9_]"), "_")
-        val target = if (clean.endsWith(".db")) clean else "$clean.db"
+        val clean = sanitizeDbBaseName(newName) ?: return false
+        val target = "$clean.db"
         val oldFile = File(dbDir, oldName)
         val newFile = File(dbDir, target)
         if (!oldFile.exists() || newFile.exists()) return false
@@ -354,12 +375,14 @@ class DatabaseManager(private val context: Context) {
                 // Non-query DDL / DML
                 var affected = 0
                 if (upper.startsWith("UPDATE") || upper.startsWith("DELETE")) {
-                    val stmt = db.compileStatement(singleSql)
-                    affected = stmt.executeUpdateDelete()
+                    db.compileStatement(singleSql).use { stmt ->
+                        affected = stmt.executeUpdateDelete()
+                    }
                 } else if (upper.startsWith("INSERT") || upper.startsWith("REPLACE")) {
-                    val stmt = db.compileStatement(singleSql)
-                    val id = stmt.executeInsert()
-                    affected = if (id != -1L) 1 else 0
+                    db.compileStatement(singleSql).use { stmt ->
+                        val id = stmt.executeInsert()
+                        affected = if (id != -1L) 1 else 0
+                    }
                 } else {
                     db.execSQL(singleSql)
                     affected = 1
@@ -415,10 +438,51 @@ class DatabaseManager(private val context: Context) {
     ): SqlExecutionResult {
         var executedCount = 0
         val createdTables = SqlScriptHelper.extractCreatedTableNames(fullSql)
+        var lastColumns = emptyList<String>()
+        var lastRows = emptyList<List<String>>()
+        var lastTotalRows = 0
+        var hasQueryOutput = false
+
         try {
             db.beginTransaction()
             for (stmt in statements) {
-                db.execSQL(stmt)
+                val upperStmt = stmt.uppercase().trimStart()
+                val isReadQuery = upperStmt.startsWith("SELECT") ||
+                    upperStmt.startsWith("WITH") ||
+                    upperStmt.startsWith("EXPLAIN") ||
+                    (upperStmt.startsWith("PRAGMA") && !upperStmt.contains("="))
+
+                if (isReadQuery) {
+                    db.rawQuery(stmt, null).use { c ->
+                        val columnCount = c.columnCount
+                        val columns = (0 until columnCount).map { c.getColumnName(it) }
+                        val rows = mutableListOf<List<String>>()
+                        val maxRows = 1000
+                        var count = 0
+                        while (c.moveToNext() && count < maxRows) {
+                            val row = mutableListOf<String>()
+                            for (i in 0 until columnCount) {
+                                val value = when (c.getType(i)) {
+                                    Cursor.FIELD_TYPE_NULL -> "NULL"
+                                    Cursor.FIELD_TYPE_INTEGER -> c.getLong(i).toString()
+                                    Cursor.FIELD_TYPE_FLOAT -> c.getDouble(i).toString()
+                                    Cursor.FIELD_TYPE_STRING -> c.getString(i) ?: ""
+                                    Cursor.FIELD_TYPE_BLOB -> "[BLOB ${c.getBlob(i).size} bytes]"
+                                    else -> c.getString(i) ?: ""
+                                }
+                                row.add(value)
+                            }
+                            rows.add(row)
+                            count++
+                        }
+                        lastColumns = columns
+                        lastRows = rows
+                        lastTotalRows = c.count
+                        hasQueryOutput = columns.isNotEmpty()
+                    }
+                } else {
+                    db.execSQL(stmt)
+                }
                 executedCount++
             }
             db.setTransactionSuccessful()
@@ -430,10 +494,12 @@ class DatabaseManager(private val context: Context) {
             return SqlExecutionResult(
                 isSuccess = true,
                 message = "Se ejecutaron $executedCount sentencias correctamente en ${elapsedMs} ms$tableMsg.",
-                affectedRows = executedCount,
+                columns = lastColumns,
+                rows = lastRows,
+                affectedRows = if (hasQueryOutput) lastTotalRows else executedCount,
                 elapsedMs = elapsedMs,
                 querySql = fullSql,
-                isQuery = false
+                isQuery = hasQueryOutput
             )
         } catch (e: Exception) {
             val elapsedMs = (System.nanoTime() - startTime) / 1_000_000
@@ -770,11 +836,24 @@ class DatabaseManager(private val context: Context) {
 
     suspend fun exportDatabaseToStream(outputStream: OutputStream): Boolean = withContext(Dispatchers.IO) {
         try {
-            val file = File(dbDir, currentDbName)
-            FileInputStream(file).use { input ->
-                input.copyTo(outputStream)
+            synchronized(this@DatabaseManager) {
+                try {
+                    activeDatabase?.let { db ->
+                        if (db.isOpen) {
+                            db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE);", null)?.use { it.moveToFirst() }
+                            db.close()
+                        }
+                    }
+                } catch (_: Exception) {}
+                activeDatabase = null
+
+                val file = File(dbDir, currentDbName)
+                if (!file.exists()) return@withContext false
+                FileInputStream(file).use { input ->
+                    input.copyTo(outputStream)
+                }
+                outputStream.flush()
             }
-            outputStream.flush()
             true
         } catch (_: Exception) {
             false
@@ -1324,12 +1403,27 @@ class DatabaseManager(private val context: Context) {
             """.trimIndent())
 
             db.execSQL("""
-                INSERT OR IGNORE INTO citas (paciente_id, medico_id, fecha, motivo, costo) VALUES 
-                (1, 1, '2026-10-28', 'Chequeo preventivo de rutina', 75.0),
-                (2, 1, '2026-11-02', 'Seguimiento presión arterial y arritmia', 60.0),
-                (3, 2, '2026-11-05', 'Consulta pediátrica general y vacunas', 50.0),
-                (1, 2, '2026-11-12', 'Evaluación preventiva infantil', 55.0),
-                (2, 1, '2026-11-20', 'Electrocardiograma de control', 85.0);
+                INSERT OR IGNORE INTO medicos (id, nombre, especialidad, telefono) VALUES
+                (1, 'Dr. Carlos Mendoza Ruiz', 'Cardiología', '+53 52401122'),
+                (2, 'Dra. Elena Vargas Leyva', 'Pediatría', '+53 52884510'),
+                (3, 'Dr. Javier Soto Tamayo', 'Medicina Interna', '+53 53129044');
+            """.trimIndent())
+
+            db.execSQL("""
+                INSERT OR IGNORE INTO pacientes (id, nombre, edad, ciudad, grupo_sanguineo) VALUES
+                (1, 'Lucía Fernández Gómez', 34, 'Holguín', 'O+'),
+                (2, 'Marcos Antonio Peña', 58, 'Moa', 'A+'),
+                (3, 'Sofía Delgado Cruz', 9, 'Santiago de Cuba', 'B+'),
+                (4, 'Ernesto Ramírez Ortiz', 46, 'La Habana', 'O-');
+            """.trimIndent())
+
+            db.execSQL("""
+                INSERT OR IGNORE INTO citas (id, paciente_id, medico_id, fecha, motivo, costo) VALUES 
+                (1, 1, 1, '2026-10-28', 'Chequeo preventivo de rutina', 75.0),
+                (2, 2, 1, '2026-11-02', 'Seguimiento presión arterial y arritmia', 60.0),
+                (3, 3, 2, '2026-11-05', 'Consulta pediátrica general y vacunas', 50.0),
+                (4, 1, 2, '2026-11-12', 'Evaluación preventiva infantil', 55.0),
+                (5, 2, 1, '2026-11-20', 'Electrocardiograma de control', 85.0);
             """.trimIndent())
         } finally {
             db.close()
@@ -1759,36 +1853,38 @@ class DatabaseManager(private val context: Context) {
         if (!file.exists()) return@withContext emptyList()
         val list = mutableListOf<TableSummary>()
         try {
-            val db = if (currentDbName == target && activeDatabase?.isOpen == true) {
-                activeDatabase!!
-            } else {
-                SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY)
-            }
-            val shouldClose = (db != activeDatabase)
-            try {
-                val cursor = db.rawQuery(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'android_metadata' ORDER BY name;",
-                    null
-                )
-                cursor.use { c ->
-                    while (c.moveToNext()) {
-                        val tableName = c.getString(0)
-                        var count = 0L
-                        var colCount = 0
-                        try {
-                            val countCursor = db.rawQuery("SELECT COUNT(*) FROM \"$tableName\"", null)
-                            countCursor.use { cc -> if (cc.moveToFirst()) count = cc.getLong(0) }
-                        } catch (_: Exception) {}
-                        try {
-                            val infoCursor = db.rawQuery("PRAGMA table_info(\"$tableName\");", null)
-                            infoCursor.use { ic -> colCount = ic.count }
-                        } catch (_: Exception) {}
-                        list.add(TableSummary(name = tableName, rowCount = count, columnCount = colCount))
-                    }
+            synchronized(this@DatabaseManager) {
+                val db = if (currentDbName == target && activeDatabase?.isOpen == true) {
+                    activeDatabase!!
+                } else {
+                    SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY)
                 }
-            } finally {
-                if (shouldClose) {
-                    try { db.close() } catch (_: Exception) {}
+                val shouldClose = (db != activeDatabase)
+                try {
+                    val cursor = db.rawQuery(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'android_metadata' ORDER BY name;",
+                        null
+                    )
+                    cursor.use { c ->
+                        while (c.moveToNext()) {
+                            val tableName = c.getString(0)
+                            var count = 0L
+                            var colCount = 0
+                            try {
+                                val countCursor = db.rawQuery("SELECT COUNT(*) FROM \"$tableName\"", null)
+                                countCursor.use { cc -> if (cc.moveToFirst()) count = cc.getLong(0) }
+                            } catch (_: Exception) {}
+                            try {
+                                val infoCursor = db.rawQuery("PRAGMA table_info(\"$tableName\");", null)
+                                infoCursor.use { ic -> colCount = ic.count }
+                            } catch (_: Exception) {}
+                            list.add(TableSummary(name = tableName, rowCount = count, columnCount = colCount))
+                        }
+                    }
+                } finally {
+                    if (shouldClose) {
+                        try { db.close() } catch (_: Exception) {}
+                    }
                 }
             }
         } catch (_: Exception) {}

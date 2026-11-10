@@ -1316,6 +1316,9 @@ fun QueryScreen(
 }
 
 fun getDefaultQueryForDatabase(activeDb: String, tableNames: List<String>): String {
+    val isClinica = activeDb.contains("clinica", ignoreCase = true) ||
+            activeDb.contains("clinic", ignoreCase = true) ||
+            (tableNames.contains("citas") && tableNames.contains("medicos"))
     val isSecretaria = activeDb.contains("secretaria", ignoreCase = true) ||
             tableNames.contains("reasignaciones") ||
             (tableNames.contains("grupos") && tableNames.contains("materias"))
@@ -1327,8 +1330,31 @@ fun getDefaultQueryForDatabase(activeDb: String, tableNames: List<String>): Stri
     val isCuba = activeDb.contains("cuba", ignoreCase = true) || tableNames.contains("provincias")
     val isTienda = tableNames.contains("clientes") || tableNames.contains("pedidos") ||
             activeDb.contains("tienda", ignoreCase = true)
+    val isEcommerce = activeDb.contains("ecommerce", ignoreCase = true) ||
+            (tableNames.contains("articulos") && tableNames.contains("categorias"))
+    val isUniversity = activeDb.contains("university", ignoreCase = true) ||
+            activeDb.contains("universidad", ignoreCase = true) ||
+            (tableNames.contains("calificaciones") && tableNames.contains("cursos"))
+    val isProjects = activeDb.contains("project", ignoreCase = true) ||
+            activeDb.contains("proyecto", ignoreCase = true) ||
+            (tableNames.contains("proyectos") && tableNames.contains("tareas"))
 
     return when {
+        isClinica -> """
+            SELECT
+                c.id AS cita_id,
+                p.nombre AS paciente,
+                m.nombre AS medico,
+                m.especialidad,
+                c.fecha,
+                c.motivo,
+                c.costo
+            FROM citas c
+            INNER JOIN pacientes p ON c.paciente_id = p.id
+            INNER JOIN medicos m ON c.medico_id = m.id
+            ORDER BY c.fecha DESC;
+        """.trimIndent()
+
         isSecretaria -> """
             -- Base de Datos: Secretaría Escolar
             -- Tablas: grupos, materias, estudiantes_matricula, reasignaciones
@@ -1396,6 +1422,44 @@ fun getDefaultQueryForDatabase(activeDb: String, tableNames: List<String>): Stri
             LIMIT 10;
         """.trimIndent()
 
+        isEcommerce -> """
+            SELECT
+                a.id,
+                a.nombre AS articulo,
+                c.nombre AS categoria,
+                a.precio
+            FROM articulos a
+            INNER JOIN categorias c ON a.categoria_id = c.id
+            ORDER BY a.precio DESC;
+        """.trimIndent()
+
+        isUniversity -> """
+            SELECT
+                e.matricula,
+                e.nombre AS estudiante,
+                c.titulo AS curso,
+                p.nombre AS profesor,
+                cal.nota
+            FROM calificaciones cal
+            INNER JOIN estudiantes e ON cal.estudiante_id = e.id
+            INNER JOIN cursos c ON cal.curso_id = c.id
+            INNER JOIN profesores p ON c.profesor_id = p.id
+            ORDER BY cal.nota DESC;
+        """.trimIndent()
+
+        isProjects -> """
+            SELECT
+                pr.nombre AS proyecto,
+                t.titulo AS tarea,
+                t.prioridad,
+                m.nombre AS responsable,
+                t.completada
+            FROM tareas t
+            INNER JOIN proyectos pr ON t.proyecto_id = pr.id
+            LEFT JOIN miembros m ON t.miembro_id = m.id
+            ORDER BY t.completada ASC, pr.nombre ASC;
+        """.trimIndent()
+
         tableNames.isNotEmpty() -> """
             SELECT * FROM "${tableNames.first()}"
             LIMIT 20;
@@ -1405,7 +1469,7 @@ fun getDefaultQueryForDatabase(activeDb: String, tableNames: List<String>): Stri
     }
 }
 
-private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: List<String>): String {
+internal fun getSnippetForDatabase(type: String, activeDb: String, tableNames: List<String>): String {
     val isOtorgamiento = activeDb.contains("otorgamiento", ignoreCase = true) ||
             tableNames.contains("boletas_solicitud") ||
             (tableNames.contains("estudiantes") && tableNames.contains("carreras"))
@@ -1417,7 +1481,16 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
     val isSecretaria = activeDb.contains("secretaria", ignoreCase = true) ||
             tableNames.contains("grupos") || tableNames.contains("reasignaciones")
     val isClinica = activeDb.contains("clinica", ignoreCase = true) ||
+            activeDb.contains("clinic", ignoreCase = true) ||
             (tableNames.contains("citas") && tableNames.contains("medicos"))
+    val isEcommerce = activeDb.contains("ecommerce", ignoreCase = true) ||
+            (tableNames.contains("articulos") && tableNames.contains("categorias"))
+    val isUniversity = activeDb.contains("university", ignoreCase = true) ||
+            activeDb.contains("universidad", ignoreCase = true) ||
+            (tableNames.contains("calificaciones") && tableNames.contains("cursos"))
+    val isProjects = activeDb.contains("project", ignoreCase = true) ||
+            activeDb.contains("proyecto", ignoreCase = true) ||
+            (tableNames.contains("proyectos") && tableNames.contains("tareas"))
     val firstTable = tableNames.firstOrNull() ?: "nueva_tabla"
 
     return when (type) {
@@ -1446,7 +1519,7 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
                     promedio_ingreso,
                     estado_matricula
                 ) VALUES (
-                    'EXP-2025-021',
+                    'EXP-2026-${(100..999).random()}',
                     'Karel Ramos Ferrás',
                     'M',
                     1,
@@ -1468,7 +1541,7 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
                     centro_estudio
                 ) VALUES (
                     '950808${(10000..99999).random()}',
-                    '2026-036',
+                    '2026-${(100..999).random()}',
                     'Alejandro Morales Cruz',
                     'M',
                     'Preuniversitario',
@@ -1485,13 +1558,28 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
             """.trimIndent()
 
             isCuba -> """
-                INSERT INTO lugares_interes (nombre, provincia_id, tipo, descripcion)
-                VALUES ('Cayo Saetía', 10, 'Natural', 'Parque natural con fauna exótica y playas vírgenes en Holguín.');
+                INSERT INTO lugares_interes (provincia_id, nombre, tipo, patrimonio_unesco)
+                VALUES (12, 'Cayo Saetía', 'Parque Natural y Playa', 0);
             """.trimIndent()
 
             isTienda -> """
-                INSERT INTO clientes (nombre, email, telefono, ciudad, saldo)
-                VALUES ('Carlos Manuel Pérez', 'carlos@ejemplo.cu', '+53 52123456', 'Moa', 250.0);
+                INSERT INTO clientes (nombre, email, ciudad, saldo)
+                VALUES ('Carlos Manuel Pérez', 'carlos_${(100..999).random()}@ejemplo.cu', 'Moa', 250.0);
+            """.trimIndent()
+
+            isEcommerce -> """
+                INSERT INTO articulos (categoria_id, nombre, precio)
+                VALUES (1, 'Teclado USB Pro ${(10..99).random()}', 49.90);
+            """.trimIndent()
+
+            isUniversity -> """
+                INSERT INTO estudiantes (nombre, matricula)
+                VALUES ('Lucía Herrera', 'EST-2026-${(100..999).random()}');
+            """.trimIndent()
+
+            isProjects -> """
+                INSERT INTO proyectos (nombre, descripcion, presupuesto, estado)
+                VALUES ('Nuevo Proyecto ${(10..99).random()}', 'Proyecto de prueba en aula', 3500.0, 'Activo');
             """.trimIndent()
 
             else -> """
@@ -1542,10 +1630,28 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
             """.trimIndent()
 
             isTienda -> """
-                SELECT id, nombre, email, telefono, ciudad, saldo
+                SELECT id, nombre, email, ciudad, saldo
                 FROM clientes
                 ORDER BY id ASC
                 LIMIT 15;
+            """.trimIndent()
+
+            isEcommerce -> """
+                SELECT id, categoria_id, nombre, precio
+                FROM articulos
+                ORDER BY precio DESC;
+            """.trimIndent()
+
+            isUniversity -> """
+                SELECT id, nombre, matricula
+                FROM estudiantes
+                ORDER BY id ASC;
+            """.trimIndent()
+
+            isProjects -> """
+                SELECT id, nombre, presupuesto, estado
+                FROM proyectos
+                ORDER BY id ASC;
             """.trimIndent()
 
             else -> """
@@ -1641,6 +1747,42 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
                 ORDER BY p.id DESC;
             """.trimIndent()
 
+            isEcommerce -> """
+                SELECT
+                    a.id,
+                    a.nombre AS articulo,
+                    c.nombre AS categoria,
+                    a.precio
+                FROM articulos a
+                INNER JOIN categorias c ON a.categoria_id = c.id
+                ORDER BY a.precio DESC;
+            """.trimIndent()
+
+            isUniversity -> """
+                SELECT
+                    e.nombre AS estudiante,
+                    c.titulo AS curso,
+                    p.nombre AS profesor,
+                    cal.nota
+                FROM calificaciones cal
+                INNER JOIN estudiantes e ON cal.estudiante_id = e.id
+                INNER JOIN cursos c ON cal.curso_id = c.id
+                INNER JOIN profesores p ON c.profesor_id = p.id
+                ORDER BY cal.nota DESC;
+            """.trimIndent()
+
+            isProjects -> """
+                SELECT
+                    pr.nombre AS proyecto,
+                    t.titulo AS tarea,
+                    t.prioridad,
+                    m.nombre AS responsable
+                FROM tareas t
+                INNER JOIN proyectos pr ON t.proyecto_id = pr.id
+                LEFT JOIN miembros m ON t.miembro_id = m.id
+                ORDER BY pr.nombre ASC;
+            """.trimIndent()
+
             else -> """
                 SELECT * FROM "$firstTable"
                 LIMIT 20;
@@ -1719,6 +1861,36 @@ private fun getSnippetForDatabase(type: String, activeDb: String, tableNames: Li
                 FROM clientes c
                 GROUP BY c.ciudad
                 ORDER BY cantidad_clientes DESC;
+            """.trimIndent()
+
+            isEcommerce -> """
+                SELECT
+                    c.nombre AS categoria,
+                    COUNT(a.id) AS total_articulos,
+                    ROUND(AVG(a.precio), 2) AS precio_promedio
+                FROM categorias c
+                LEFT JOIN articulos a ON c.id = a.categoria_id
+                GROUP BY c.id, c.nombre;
+            """.trimIndent()
+
+            isUniversity -> """
+                SELECT
+                    c.titulo AS curso,
+                    COUNT(cal.id) AS evaluados,
+                    ROUND(AVG(cal.nota), 2) AS nota_promedio
+                FROM cursos c
+                LEFT JOIN calificaciones cal ON c.id = cal.curso_id
+                GROUP BY c.id, c.titulo;
+            """.trimIndent()
+
+            isProjects -> """
+                SELECT
+                    pr.nombre AS proyecto,
+                    COUNT(t.id) AS total_tareas,
+                    pr.presupuesto
+                FROM proyectos pr
+                LEFT JOIN tareas t ON pr.id = t.proyecto_id
+                GROUP BY pr.id, pr.nombre;
             """.trimIndent()
 
             else -> """
