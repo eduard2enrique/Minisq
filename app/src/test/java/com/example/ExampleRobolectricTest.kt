@@ -958,6 +958,136 @@ class ExampleRobolectricTest {
     assertEquals("SELECT 25;", repo.getLast20Queries().first().sql)
     dbManager.closeDatabase()
   }
+
+  @Test
+  fun `sql autocompleter handles full select from where flow prefixes aliases and active schema`() {
+    val schema = listOf(
+      com.example.model.TableSchemaDetail(
+        tableName = "clientes",
+        columns = listOf(
+          com.example.model.ColumnInfo(0, "id", "INTEGER", true, null, true),
+          com.example.model.ColumnInfo(1, "nombre", "TEXT", true, null, false),
+          com.example.model.ColumnInfo(2, "email", "TEXT", false, null, false),
+          com.example.model.ColumnInfo(3, "ciudad", "TEXT", false, null, false),
+          com.example.model.ColumnInfo(4, "saldo", "REAL", false, "0.0", false)
+        )
+      ),
+      com.example.model.TableSchemaDetail(
+        tableName = "pedidos",
+        columns = listOf(
+          com.example.model.ColumnInfo(0, "id", "INTEGER", true, null, true),
+          com.example.model.ColumnInfo(1, "cliente_id", "INTEGER", true, null, false),
+          com.example.model.ColumnInfo(2, "total", "REAL", false, null, false),
+          com.example.model.ColumnInfo(3, "estado", "TEXT", false, null, false),
+          com.example.model.ColumnInfo(4, "fecha_pedido", "TEXT", false, null, false)
+        )
+      )
+    )
+    val tables = schema.map { it.tableName }
+    val columns = schema.flatMap { it.columns.map { c -> c.name } }.distinct()
+
+    // 1. Prefix in SELECT suggests matching schema columns (not truncated at 8, includes later tables too)
+    val selectPrefix = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SELECT fe",
+      cursorIndex = 9,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertTrue("Should suggest 'fecha_pedido' from second table", selectPrefix.any { it.displayText == "fecha_pedido" && it.tableTag == "pedidos" })
+
+    // 2. Column insertion in SELECT does NOT force comma; after "SELECT nombre ", FROM and smart FROM clientes lead
+    val afterColInSelect = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SELECT nombre ",
+      cursorIndex = 14,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertEquals("FROM", afterColInSelect.first().displayText)
+    assertTrue("Should suggest smart FROM clientes snippet", afterColInSelect.any { it.displayText == "FROM clientes" })
+    assertTrue("Should also offer comma for more columns", afterColInSelect.any { it.insertText == ", " })
+
+    // 3. Prefix "fr" after column in SELECT matches FROM cleanly
+    val fromPrefix = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SELECT nombre fr",
+      cursorIndex = 16,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertEquals("FROM", fromPrefix.first().displayText)
+
+    // 4. Typing prefix after FROM suggests ONLY matching tables
+    val tablePrefix = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SELECT nombre FROM cl",
+      cursorIndex = 21,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertTrue(tablePrefix.all { it.category == com.example.data.SuggestionCategory.TABLE })
+    assertEquals("clientes", tablePrefix.first().displayText)
+
+    // 5. Typing "w" after table in FROM suggests WHERE
+    val wherePrefix = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SELECT nombre FROM clientes w",
+      cursorIndex = 29,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertEquals("WHERE", wherePrefix.first().displayText)
+
+    // 6. Typing "sa" inside WHERE prioritizes columns of referenced table 'clientes'
+    val whereColPrefix = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SELECT nombre FROM clientes WHERE sa",
+      cursorIndex = 36,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertEquals("saldo", whereColPrefix.first().displayText)
+    assertEquals("clientes", whereColPrefix.first().tableTag)
+
+    // 7. Right after a column name in WHERE ("WHERE ciudad "), suggest operators instead of columns
+    val afterWhereCol = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = "SELECT nombre FROM clientes WHERE ciudad ",
+      cursorIndex = 41,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertTrue(afterWhereCol.any { it.displayText == "=" })
+    assertTrue(afterWhereCol.any { it.displayText.startsWith("LIKE") })
+    assertTrue(afterWhereCol.any { it.displayText == "IS NULL" })
+
+    // 8. Table alias dot-completion works even when FROM ... JOIN appears AFTER cursor in SELECT
+    val aliasDotQuery = "SELECT p.total, c.nom FROM pedidos p JOIN clientes c"
+    val aliasDotCursor = aliasDotQuery.indexOf("c.nom") + "c.nom".length
+    val aliasDotSuggestions = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = aliasDotQuery,
+      cursorIndex = aliasDotCursor,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertEquals("nombre", aliasDotSuggestions.first().displayText)
+    assertEquals("clientes", aliasDotSuggestions.first().tableTag)
+
+    // 9. Multi-statement isolation: second SELECT after ';' ignores first statement's FROM clientes
+    val multiStmt = "SELECT * FROM clientes; SELECT tot"
+    val secondStmtSuggestions = com.example.data.SqlAutoCompleter.getSuggestions(
+      fullText = multiStmt,
+      cursorIndex = multiStmt.length,
+      availableTables = tables,
+      availableColumns = columns,
+      tableSchemas = schema
+    )
+    assertEquals("total", secondStmtSuggestions.first().displayText)
+    assertEquals("pedidos", secondStmtSuggestions.first().tableTag)
+  }
 }
+
 
 

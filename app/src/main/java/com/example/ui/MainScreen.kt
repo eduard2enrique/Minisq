@@ -8,18 +8,26 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -100,6 +108,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateMapOf
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MainScreen(
     dbManager: DatabaseManager,
@@ -216,6 +225,8 @@ fun MainScreen(
         tablesList.sumOf { it.rowCount }
     }
 
+    val isImeVisible = WindowInsets.isImeVisible
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -245,34 +256,41 @@ fun MainScreen(
             contentWindowInsets = WindowInsets.statusBars,
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
-                // Footer matching screenshot with edge-to-edge background and navigation bar insets
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.background)
-                        .navigationBarsPadding()
-                        .padding(vertical = 10.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                // Hide footer automatically while the soft keyboard is open so the SQL editor
+                // and floating Execute button keep maximum vertical room above the keyboard.
+                AnimatedVisibility(
+                    visible = !isImeVisible,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
                 ) {
-                    HorizontalDivider(
+                    Column(
                         modifier = Modifier
-                            .width(100.dp)
-                            .padding(bottom = 6.dp),
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                        thickness = 1.5.dp
-                    )
-                    Text(
-                        text = "Creado para la enseñanza de SQL",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "© 2026 Prof. Eduardo Enrique Sanamé Durán",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        fontWeight = FontWeight.Medium
-                    )
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.background)
+                            .navigationBarsPadding()
+                            .padding(vertical = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        HorizontalDivider(
+                            modifier = Modifier
+                                .width(100.dp)
+                                .padding(bottom = 6.dp),
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                            thickness = 1.5.dp
+                        )
+                        Text(
+                            text = "Creado para la enseñanza de SQL",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "© 2026 Prof. Eduardo Enrique Sanamé Durán",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
                 }
             }
         ) { innerPadding ->
@@ -280,6 +298,7 @@ fun MainScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
+                    .imePadding()
             ) {
                 Spacer(modifier = Modifier.height(4.dp))
 
@@ -325,23 +344,27 @@ fun MainScreen(
                             ) {
                                 Text(
                                     text = "MiniSQL Pro",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
+                                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 14.5.sp),
                                     fontWeight = FontWeight.ExtraBold,
                                     color = MaterialTheme.colorScheme.onBackground,
                                     maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 // Version badge
                                 Surface(
                                     shape = RoundedCornerShape(6.dp),
                                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                    border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                                    border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                                    modifier = Modifier.testTag("app_version_badge")
                                 ) {
                                     Text(
-                                        text = "v1.3",
+                                        text = "v${com.example.BuildConfig.VERSION_NAME}",
                                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        softWrap = false,
                                         modifier = Modifier.padding(horizontal = 4.5.dp, vertical = 1.dp)
                                     )
                                 }

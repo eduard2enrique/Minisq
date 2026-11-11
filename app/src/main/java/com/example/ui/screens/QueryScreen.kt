@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -81,7 +82,9 @@ import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -104,6 +107,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.DatabaseManager
@@ -323,19 +327,17 @@ fun QueryScreen(
     var allColumns by remember { mutableStateOf<List<String>>(emptyList()) }
     var allTableSchemas by remember { mutableStateOf<List<com.example.model.TableSchemaDetail>>(emptyList()) }
 
-    // Load columns and schema details on mount / table changes
-    remember(tables) {
-        scope.launch {
-            val schemas = mutableListOf<com.example.model.TableSchemaDetail>()
-            val cols = mutableListOf<String>()
-            for (t in tables) {
-                val schema = dbManager.getTableSchema(t.name)
-                schemas.add(schema)
-                cols.addAll(schema.columns.map { it.name })
-            }
-            allColumns = cols.distinct()
-            allTableSchemas = schemas
+    // Load columns and schema details safely whenever active DB or tables list changes
+    LaunchedEffect(activeDbName, tables) {
+        val schemas = mutableListOf<com.example.model.TableSchemaDetail>()
+        val cols = mutableListOf<String>()
+        for (t in tables) {
+            val schema = dbManager.getTableSchema(t.name)
+            schemas.add(schema)
+            cols.addAll(schema.columns.map { it.name })
         }
+        allColumns = cols.distinct()
+        allTableSchemas = schemas
     }
 
     fun executeCurrentSql(force: Boolean = false) {
@@ -400,7 +402,13 @@ fun QueryScreen(
         updateSqlQuery(TextFieldValue(snippet, TextRange(snippet.length)))
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val maxWidthPx = constraints.maxWidth.toFloat()
+        val maxHeightPx = constraints.maxHeight.toFloat()
+        val edgeMarginPx = with(density) { 16.dp.toPx() }
+        var fabSize by remember { mutableStateOf(IntSize.Zero) }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -481,6 +489,8 @@ fun QueryScreen(
             availableColumns = allColumns,
             tableSchemas = allTableSchemas,
             isDark = isDark,
+            onExecuteSql = { executeCurrentSql() },
+            isExecuting = isExecuting,
             modifier = Modifier.testTag("sql_editor_component")
         )
 
@@ -1004,14 +1014,14 @@ fun QueryScreen(
         }
     }
 
-        // Smart Intelligent Floating "Ejecutar" Button (Sole execution trigger)
-        // Docks naturally at bottom-right, auto-adapts with typing height, and supports free manual drag & re-docking
+        // Smart Intelligent Floating "Ejecutar" Button
+        // Docks naturally at bottom-right above the keyboard, clamped strictly within visible bounds
         val lineCount = remember(sqlQuery.text) { sqlQuery.text.count { it == '\n' } + 1 }
         val smartVerticalOffset by animateFloatAsState(
             targetValue = if (isManuallyPositioned) 0f else {
                 when {
-                    lineCount in 2..4 -> -8f * (lineCount - 1)
-                    lineCount >= 5 -> -32f
+                    lineCount in 2..4 -> -6f * (lineCount - 1)
+                    lineCount >= 5 -> -24f
                     else -> 0f
                 }
             },
@@ -1019,17 +1029,19 @@ fun QueryScreen(
             label = "smartFabOffset"
         )
         val hasSqlContent = sqlQuery.text.isNotBlank()
-        val effectiveOffsetX = fabOffset.x
-        val effectiveOffsetY = fabOffset.y + if (!isManuallyPositioned) smartVerticalOffset else 0f
+        val minOffsetX = if (fabSize.width > 0) -(maxWidthPx - fabSize.width - edgeMarginPx * 1.5f).coerceAtLeast(0f) else -400f
+        val minOffsetY = if (fabSize.height > 0) -(maxHeightPx - fabSize.height - edgeMarginPx * 1.5f).coerceAtLeast(0f) else -400f
+        val effectiveOffsetX = fabOffset.x.coerceIn(minOffsetX, 0f)
+        val effectiveOffsetY = (fabOffset.y + if (!isManuallyPositioned) smartVerticalOffset else 0f).coerceIn(minOffsetY, 0f)
 
         Surface(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(bottom = 16.dp, end = 16.dp)
                 .imePadding()
+                .padding(bottom = 12.dp, end = 16.dp)
+                .onSizeChanged { fabSize = it }
                 .offset { IntOffset(effectiveOffsetX.roundToInt(), effectiveOffsetY.roundToInt()) }
-                .testTag("floating_execute_sql_button")
-                .testTag("execute_sql_button"),
+                .testTag("floating_execute_sql_button"),
             shape = RoundedCornerShape(22.dp),
             color = if (hasSqlContent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
             contentColor = if (hasSqlContent) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1045,7 +1057,7 @@ fun QueryScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(start = 6.dp, end = 12.dp, top = 4.dp, bottom = 4.dp)
             ) {
-                // Drag handle (Grip indicator) - allows dragging anywhere on screen
+                // Drag handle (Grip indicator) - allows dragging within visible screen bounds
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -1054,12 +1066,16 @@ fun QueryScreen(
                             if (hasSqlContent) Color.White.copy(alpha = 0.20f)
                             else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
                         )
-                        .pointerInput(Unit) {
+                        .pointerInput(minOffsetX, minOffsetY) {
                             detectDragGestures(
                                 onDragStart = { isManuallyPositioned = true },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    fabOffset += dragAmount
+                                    val updated = fabOffset + dragAmount
+                                    fabOffset = Offset(
+                                        x = updated.x.coerceIn(minOffsetX, 0f),
+                                        y = updated.y.coerceIn(minOffsetY, 0f)
+                                    )
                                 }
                             )
                         },

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.outlined.Functions
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Redo
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.Undo
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -97,6 +99,8 @@ fun SqlEditor(
     tableSchemas: List<TableSchemaDetail> = emptyList(),
     modifier: Modifier = Modifier,
     isDark: Boolean = true,
+    onExecuteSql: (() -> Unit)? = null,
+    isExecuting: Boolean = false,
     onValidationChanged: (List<SqlSyntaxIssue>) -> Unit = {}
 ) {
     var fontSizeSp by remember { mutableFloatStateOf(14f) }
@@ -204,11 +208,30 @@ fun SqlEditor(
         val raw = value.text
         val cur = cursorIndex.coerceIn(0, raw.length)
         val wordLen = currentWord.length
-        val start = (cur - wordLen).coerceAtLeast(0)
+        var start = (cur - wordLen).coerceAtLeast(0)
         val end = cur.coerceAtMost(raw.length)
         val insert = suggestion.insertText
-        val newText = raw.substring(0, start) + insert + raw.substring(end)
-        val targetCursor = (start + insert.length - suggestion.cursorOffsetFromEnd).coerceIn(0, newText.length)
+
+        // Avoid awkward "SELECT nombre , " when inserting comma after trailing space
+        if (insert.startsWith(",") && currentWord.isEmpty()) {
+            while (start > 0 && raw[start - 1] == ' ') {
+                start--
+            }
+        }
+
+        val prefixSpace = if (
+            start > 0 &&
+            !raw[start - 1].isWhitespace() &&
+            raw[start - 1] != '(' &&
+            raw[start - 1] != '.' &&
+            !insert.startsWith(",") &&
+            !insert.startsWith(";") &&
+            !insert.startsWith(" ")
+        ) " " else ""
+
+        val newText = raw.substring(0, start) + prefixSpace + insert + raw.substring(end)
+        val targetCursor = (start + prefixSpace.length + insert.length - suggestion.cursorOffsetFromEnd)
+            .coerceIn(0, newText.length)
         updateValueWithHistory(TextFieldValue(newText, TextRange(targetCursor)))
     }
 
@@ -445,13 +468,29 @@ fun SqlEditor(
                             modifier = Modifier.size(16.dp)
                         )
                     }
+
+                    TextButton(
+                        onClick = { if (fontSizeSp > 11f) fontSizeSp -= 1f },
+                        modifier = Modifier.size(26.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    ) {
+                        Text("A-", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = textPrimary)
+                    }
+
+                    TextButton(
+                        onClick = { if (fontSizeSp < 22f) fontSizeSp += 1f },
+                        modifier = Modifier.size(26.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    ) {
+                        Text("A+", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = textPrimary)
+                    }
                 }
 
-                // Pinned Right Group: Compact Line Counter + Font Sizers
+                // Pinned Right Group: Line Counter + Always-Visible Inline Ejecutar Button
                 Row(
                     modifier = Modifier.padding(start = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         text = "${linesCount}L",
@@ -460,21 +499,49 @@ fun SqlEditor(
                         maxLines = 1
                     )
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(
-                            onClick = { if (fontSizeSp > 11f) fontSizeSp -= 1f },
-                            modifier = Modifier.size(26.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                    if (onExecuteSql != null) {
+                        val hasSql = value.text.isNotBlank()
+                        Surface(
+                            shape = RoundedCornerShape(9.dp),
+                            color = if (hasSql) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(
+                                1.dp,
+                                if (hasSql) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                            ),
+                            modifier = Modifier
+                                .heightIn(min = 32.dp)
+                                .clip(RoundedCornerShape(9.dp))
+                                .clickable(enabled = !isExecuting) { onExecuteSql() }
+                                .testTag("editor_execute_sql_button")
                         ) {
-                            Text("A-", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = textPrimary)
-                        }
-
-                        TextButton(
-                            onClick = { if (fontSizeSp < 22f) fontSizeSp += 1f },
-                            modifier = Modifier.size(26.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                        ) {
-                            Text("A+", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp), color = textPrimary)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (isExecuting) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(12.dp),
+                                        strokeWidth = 1.8.dp,
+                                        color = if (hasSql) Color.White else MaterialTheme.colorScheme.primary
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Outlined.PlayArrow,
+                                        contentDescription = "Ejecutar consulta",
+                                        tint = if (hasSql) Color.White else textMuted,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Text(
+                                    text = if (isExecuting) "..." else "Ejecutar",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (hasSql) Color.White else textMuted,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
                 }
@@ -677,7 +744,7 @@ fun SqlEditor(
                                         color = categoryColor.copy(alpha = 0.15f)
                                     ) {
                                         Text(
-                                            text = suggestion.category.label,
+                                            text = suggestion.tableTag ?: suggestion.category.label,
                                             style = MaterialTheme.typography.labelSmall.copy(
                                                 fontSize = 8.5.sp,
                                                 fontWeight = FontWeight.SemiBold
@@ -705,7 +772,7 @@ fun SqlEditor(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 180.dp, max = 280.dp)
+                    .heightIn(min = 150.dp, max = 260.dp)
                     .padding(8.dp)
             ) {
                 val verticalScroll = rememberScrollState()
