@@ -1,6 +1,6 @@
 {
   "name": "MiniSQL Pro",
-  "description": "MiniSQL Pro 1.3 - Navegador y editor visual de SQLite con motor nativo, consultas avanzadas, diseñador ER dinámico, tipografía auto-escalable y exportación.",
+  "description": "MiniSQL Pro 1.4 - Navegador y editor visual de SQLite con motor nativo, consultas avanzadas, diseñador ER dinámico, tipografía auto-escalable y exportación.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
